@@ -31,31 +31,20 @@ function App() {
       useNoteStore.setState({ isPinned: pinned });
     });
 
-    // Listen for focus/blur using raw events
-    const setup = async () => {
-      const unlistenFocus = await win.listen("tauri://focus", () => {
-        console.log("Window focused");
-        setFocused(true);
-      });
-      const unlistenBlur = await win.listen("tauri://blur", () => {
-        console.log("Window blurred");
-        setFocused(false);
-      });
+    // Use DOM focus/blur events (browser-native, works reliably in WebView)
+    const onFocus = () => setFocused(true);
+    const onBlur = () => setFocused(false);
 
-      // Initial state
-      win.isFocused().then((f) => setFocused(f));
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
 
-      return () => {
-        unlistenFocus();
-        unlistenBlur();
-      };
-    };
-
-    const cleanup = setup();
+    // Check initial state
+    setFocused(document.hasFocus());
 
     return () => {
       unlistenTray.then((fn) => fn());
-      cleanup.then((fn) => fn());
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
     };
   }, []);
 
