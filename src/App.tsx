@@ -11,6 +11,10 @@ function App() {
   const { fetchNotes, createNote, opacity } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [focused, setFocused] = useState(true);
+
+  // Effective opacity: full opacity when focused, user-set opacity when blurred
+  const effectiveOpacity = focused ? 1.0 : opacity;
 
   useEffect(() => {
     if (initialized.current) return;
@@ -18,21 +22,28 @@ function App() {
 
     fetchNotes();
 
-    const unlisten = listen("tray-new-note", () => {
+    const unlistenTray = listen("tray-new-note", () => {
       createNote();
     });
 
-    getCurrentWindow().isAlwaysOnTop().then((pinned) => {
+    const win = getCurrentWindow();
+    win.isAlwaysOnTop().then((pinned) => {
       useNoteStore.setState({ isPinned: pinned });
     });
 
+    // Listen for focus/blur events
+    const unlistenFocus = win.onFocusChanged(({ payload: isFocused }) => {
+      setFocused(isFocused);
+    });
+
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenTray.then((fn) => fn());
+      unlistenFocus.then((fn) => fn());
     };
   }, []);
 
   return (
-    <div className="app" style={{ opacity }}>
+    <div className="app" style={{ opacity: effectiveOpacity, transition: "opacity 0.3s ease" }}>
       <TitleBar onSettings={() => setSettingsOpen(true)} />
       <div className="app-body">
         <Sidebar />
