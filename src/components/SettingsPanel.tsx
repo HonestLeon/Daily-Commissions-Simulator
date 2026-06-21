@@ -8,6 +8,9 @@ interface Props {
 
 export default function SettingsPanel({ open, onClose }: Props) {
   const [autoStart, setAutoStart] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return document.documentElement.dataset.theme === "dark";
+  });
 
   useEffect(() => {
     if (open) {
@@ -26,6 +29,12 @@ export default function SettingsPanel({ open, onClose }: Props) {
     } catch (e) {
       console.error("Failed to toggle autostart:", e);
     }
+  };
+
+  const toggleDarkMode = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.dataset.theme = next ? "dark" : "light";
   };
 
   if (!open) return null;
@@ -49,6 +58,18 @@ export default function SettingsPanel({ open, onClose }: Props) {
               </div>
             </div>
             <div className={`settings-toggle ${autoStart ? "on" : "off"}`}>
+              <div className="settings-toggle-knob" />
+            </div>
+          </label>
+
+          <label className="settings-row" onClick={toggleDarkMode}>
+            <div className="settings-label">
+              <div className="settings-label-title">暗色模式</div>
+              <div className="settings-label-desc">
+                切换深色/浅色主题外观
+              </div>
+            </div>
+            <div className={`settings-toggle ${darkMode ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
             </div>
           </label>
