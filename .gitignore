@@ -26,3 +26,8 @@ npm-debug.log*
 
 # Tauri
 src-tauri/gen/
+
+# Installers
+*.exe
+*.msi
+!src-tauri/icons/*.exe
