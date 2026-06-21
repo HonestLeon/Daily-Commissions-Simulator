@@ -1,0 +1,24 @@
+[package]
+name = "lightweight-sticky-notes"
+version = "0.1.0"
+description = "轻量半透明 Markdown 便签"
+authors = ["HonestLeon"]
+edition = "2021"
+
+[lib]
+name = "app_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+window-vibrancy = "0.5"

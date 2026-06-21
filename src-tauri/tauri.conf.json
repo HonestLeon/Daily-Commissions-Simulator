@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholasio/bonsaidb/main/tauri.conf.schema.json",
+  "productName": "轻量便签",
+  "version": "0.1.0",
+  "identifier": "com.liurr.lightweight-sticky-notes",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "便签",
+        "width": 620,
+        "height": 500,
+        "minWidth": 340,
+        "minHeight": 300,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "windowEffects": {
+          "effects": ["acrylic"]
+        }
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ]
+  }
+}

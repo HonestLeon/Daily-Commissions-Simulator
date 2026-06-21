@@ -1,0 +1,12 @@
+/* 全局透明背景 — 配合 Windows Acrylic 效果 */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent !important;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: #1e1e1e;
+  user-select: none;
+}
