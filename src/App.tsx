@@ -13,8 +13,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focused, setFocused] = useState(true);
 
-  // Fully opaque when focused, user-set opacity when not focused
-  const effectiveOpacity = focused ? 1.0 : opacity;
+  // User-set opacity when focused (editing), fully opaque when not focused (to see through)
+  const effectiveOpacity = focused ? opacity : 1.0;
 
   useEffect(() => {
     if (initialized.current) return;
