@@ -13,7 +13,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focused, setFocused] = useState(true);
 
-  // Effective opacity: full opacity when focused, user-set opacity when blurred
+  // Fully opaque when focused, user-set opacity when not focused
   const effectiveOpacity = focused ? 1.0 : opacity;
 
   useEffect(() => {
@@ -31,19 +31,42 @@ function App() {
       useNoteStore.setState({ isPinned: pinned });
     });
 
-    // Listen for focus/blur events
-    const unlistenFocus = win.onFocusChanged(({ payload: isFocused }) => {
-      setFocused(isFocused);
-    });
+    // Listen for focus/blur using raw events
+    const setup = async () => {
+      const unlistenFocus = await win.listen("tauri://focus", () => {
+        console.log("Window focused");
+        setFocused(true);
+      });
+      const unlistenBlur = await win.listen("tauri://blur", () => {
+        console.log("Window blurred");
+        setFocused(false);
+      });
+
+      // Initial state
+      win.isFocused().then((f) => setFocused(f));
+
+      return () => {
+        unlistenFocus();
+        unlistenBlur();
+      };
+    };
+
+    const cleanup = setup();
 
     return () => {
       unlistenTray.then((fn) => fn());
-      unlistenFocus.then((fn) => fn());
+      cleanup.then((fn) => fn());
     };
   }, []);
 
   return (
-    <div className="app" style={{ opacity: effectiveOpacity, transition: "opacity 0.3s ease" }}>
+    <div
+      className="app"
+      style={{
+        opacity: effectiveOpacity,
+        transition: "opacity 0.3s ease",
+      }}
+    >
       <TitleBar onSettings={() => setSettingsOpen(true)} />
       <div className="app-body">
         <Sidebar />
