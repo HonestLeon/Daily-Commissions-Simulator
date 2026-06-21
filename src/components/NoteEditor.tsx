@@ -1,40 +1,83 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Crepe } from "@milkdown/crepe";
+import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { useNoteStore } from "../stores/noteStore";
+import "@milkdown/crepe/theme/common/style.css";
+import "@milkdown/crepe/theme/frame.css";
+
+// Inner editor component — uses Milkdown hooks
+function InnerEditor({
+  defaultValue,
+  onChange,
+}: {
+  defaultValue: string;
+  onChange: (md: string) => void;
+}) {
+  const editorRef = useRef<Crepe | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEditor((root) => {
+    const crepe = new Crepe({
+      root,
+      defaultValue,
+    });
+
+    // Listen for changes
+    crepe.on((listener) => {
+      listener.markdownUpdated((_, md) => {
+        onChangeRef.current(md);
+      });
+    });
+
+    editorRef.current = crepe;
+    return crepe;
+  }, []);
+
+  return <Milkdown />;
+}
 
 export default function NoteEditor() {
   const { activeId } = useNoteStore();
-  const [content, setContent] = useState("");
+  const [markdown, setMarkdown] = useState("");
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorKey = useRef(0);
 
   // Load note content when activeId changes
   useEffect(() => {
     if (!activeId) {
-      setContent("");
+      setMarkdown("");
       return;
     }
     setLoading(true);
     invoke<string>("load_note", { id: activeId })
       .then((c) => {
-        setContent(c);
+        setMarkdown(c);
+        editorKey.current += 1;
         setLoading(false);
       })
       .catch((e) => {
         console.error("Failed to load note:", e);
-        setContent("");
+        setMarkdown("");
+        editorKey.current += 1;
         setLoading(false);
       });
   }, [activeId]);
 
   // Auto-save with debounce
-  const save = useCallback(
-    (text: string, id: string) => {
+  const handleChange = useCallback(
+    (md: string) => {
+      if (!activeId) return;
+      setMarkdown(md);
+      setSaveStatus("未保存...");
+
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         try {
-          await invoke("save_note", { id, content: text });
+          await invoke("save_note", { id: activeId, content: md });
           setSaveStatus("已保存");
           setTimeout(() => setSaveStatus(""), 2000);
         } catch (e) {
@@ -43,17 +86,8 @@ export default function NoteEditor() {
         }
       }, 500);
     },
-    []
+    [activeId]
   );
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value;
-    setContent(text);
-    if (activeId) {
-      save(text, activeId);
-      setSaveStatus("未保存...");
-    }
-  };
 
   if (!activeId) {
     return (
@@ -73,13 +107,11 @@ export default function NoteEditor() {
 
   return (
     <div className="editor-container">
-      <textarea
-        className="editor-textarea"
-        value={content}
-        onChange={handleChange}
-        placeholder="开始输入 Markdown..."
-        spellCheck={false}
-      />
+      <div className="milkdown-wrapper" key={editorKey.current}>
+        <MilkdownProvider>
+          <InnerEditor defaultValue={markdown} onChange={handleChange} />
+        </MilkdownProvider>
+      </div>
       {saveStatus && <div className="editor-status">{saveStatus}</div>}
     </div>
   );

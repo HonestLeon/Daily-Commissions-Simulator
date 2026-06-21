@@ -1,7 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNoteStore } from "../stores/noteStore";
 
-export default function TitleBar() {
+interface Props {
+  onSettings: () => void;
+}
+
+export default function TitleBar({ onSettings }: Props) {
   const { isPinned, opacity, togglePin, setOpacity } = useNoteStore();
 
   const handlePin = async () => {
@@ -14,7 +18,6 @@ export default function TitleBar() {
   const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
     setOpacity(val);
-    document.documentElement.style.setProperty("--app-opacity", String(val));
   };
 
   const handleHide = () => {
@@ -26,7 +29,6 @@ export default function TitleBar() {
       className="titlebar"
       data-tauri-drag-region
       onDoubleClick={(e) => {
-        // Only toggle maximize on double-click of drag region (not buttons)
         if ((e.target as HTMLElement).hasAttribute("data-tauri-drag-region")) {
           const win = getCurrentWindow();
           win.isMaximized().then((max) => {
@@ -36,15 +38,9 @@ export default function TitleBar() {
         }
       }}
     >
-      {/* Title */}
       <span className="titlebar-title">轻量便签</span>
-
-      {/* Spacer */}
       <div style={{ flex: 1 }} data-tauri-drag-region />
-
-      {/* Controls */}
       <div className="titlebar-controls">
-        {/* Pin toggle */}
         <button
           className={`titlebar-btn ${isPinned ? "active" : ""}`}
           onClick={handlePin}
@@ -53,7 +49,6 @@ export default function TitleBar() {
           📌
         </button>
 
-        {/* Opacity slider */}
         <div className="titlebar-slider" title={`透明度: ${Math.round(opacity * 100)}%`}>
           <span style={{ fontSize: 12 }}>🎚</span>
           <input
@@ -67,12 +62,14 @@ export default function TitleBar() {
           />
         </div>
 
-        {/* Minimize to tray */}
+        <button className="titlebar-btn" onClick={onSettings} title="设置">
+          ⚙
+        </button>
+
         <button className="titlebar-btn" onClick={handleHide} title="隐藏到托盘">
           ─
         </button>
 
-        {/* Close to tray */}
         <button className="titlebar-btn titlebar-btn-close" onClick={handleHide} title="关闭到托盘">
           ✕
         </button>

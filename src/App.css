@@ -286,23 +286,26 @@ body,
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
-.editor-textarea {
+.milkdown-wrapper {
   flex: 1;
-  border: none;
+  overflow: auto;
+  padding: 0;
+}
+
+/* Milkdown overrides for semi-transparent theme */
+.milkdown-wrapper .milkdown {
+  min-height: 100%;
+}
+
+.milkdown-wrapper .editor {
+  padding: 16px 20px !important;
+  min-height: 100%;
   outline: none;
-  resize: none;
-  padding: 16px 20px;
   font-size: 15px;
   line-height: 1.7;
-  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
-  background: transparent;
-  color: #222;
-}
-
-.editor-textarea::placeholder {
-  color: #bbb;
 }
 
 .editor-status {
@@ -315,6 +318,119 @@ body,
   padding: 2px 8px;
   border-radius: 10px;
   pointer-events: none;
+  z-index: 10;
+}
+
+/* === Crepe Theme overrides for semi-transparent === */
+.milkdown-wrapper {
+  --crepe-color-background: transparent;
+  --crepe-color-surface: rgba(255, 255, 255, 0.3);
+}
+
+/* === Settings Panel === */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 200;
+}
+
+.settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  width: 340px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(30px);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #888;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.settings-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #333;
+}
+
+.settings-body {
+  padding: 12px 18px 18px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.settings-label-title {
+  font-size: 14px;
+  color: #333;
+}
+
+.settings-label-desc {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+/* Toggle switch */
+.settings-toggle {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  padding: 3px;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.settings-toggle.on {
+  background: #4caf50;
+}
+
+.settings-toggle.off {
+  background: #ccc;
+}
+
+.settings-toggle-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.settings-toggle.on .settings-toggle-knob {
+  transform: translateX(18px);
+}
+
+.settings-toggle.off .settings-toggle-knob {
+  transform: translateX(0);
 }
 
 /* === Scrollbar === */
