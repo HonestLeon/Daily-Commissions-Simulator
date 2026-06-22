@@ -337,6 +337,46 @@ body,
 .milkdown-wrapper {
   --crepe-color-background: transparent;
   --crepe-color-surface: rgba(255, 255, 255, 0.3);
+  --crepe-color-on-background: #222;
+  --crepe-color-on-surface: #333;
+  --crepe-color-outline: rgba(0, 0, 0, 0.12);
+}
+
+/* Milkdown editor text/background */
+.milkdown-wrapper .milkdown .editor,
+.milkdown-wrapper .ProseMirror {
+  color: #222;
+  caret-color: #222;
+}
+
+.milkdown-wrapper .ProseMirror h1,
+.milkdown-wrapper .ProseMirror h2,
+.milkdown-wrapper .ProseMirror h3 {
+  color: #111;
+}
+
+.milkdown-wrapper .ProseMirror code {
+  background: rgba(0, 0, 0, 0.06);
+  color: #d63384;
+}
+
+.milkdown-wrapper .ProseMirror pre {
+  background: rgba(0, 0, 0, 0.04);
+  color: #333;
+}
+
+.milkdown-wrapper .ProseMirror blockquote {
+  border-left-color: rgba(0, 0, 0, 0.2);
+  color: #555;
+}
+
+.milkdown-wrapper .ProseMirror table {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.milkdown-wrapper .ProseMirror th,
+.milkdown-wrapper .ProseMirror td {
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 /* === Dialog (generic) === */
@@ -636,19 +676,6 @@ body,
   color: #ccc;
 }
 
-[data-theme="dark"] .titlebar-btn {
-  color: #aaa;
-}
-
-[data-theme="dark"] .titlebar-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .titlebar-btn-close:hover {
-  background: rgba(220, 53, 69, 0.7);
-  color: #fff;
-}
-
 [data-theme="dark"] .sidebar {
   background: rgba(25, 25, 25, 0.55);
   border-right-color: rgba(255, 255, 255, 0.06);
@@ -698,13 +725,72 @@ body,
   color: #666;
 }
 
+/* ── Dark: Editor ── */
+
 [data-theme="dark"] .milkdown-wrapper {
   --crepe-color-background: transparent;
   --crepe-color-surface: rgba(255, 255, 255, 0.05);
+  --crepe-color-on-background: #e0e0e0;
+  --crepe-color-on-surface: #ddd;
+  --crepe-color-outline: rgba(255, 255, 255, 0.12);
 }
 
-[data-theme="dark"] .milkdown-wrapper .editor {
+[data-theme="dark"] .milkdown-wrapper .milkdown .editor,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror {
   color: #e0e0e0;
+  caret-color: #e0e0e0;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror h1,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror h2,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror h3 {
+  color: #f0f0f0;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror code {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ff85c0;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror pre {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ddd;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror blockquote {
+  border-left-color: rgba(255, 255, 255, 0.15);
+  color: #aaa;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror table {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror th,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Dark: Titlebar buttons brighter for visibility ── */
+
+[data-theme="dark"] .titlebar-btn {
+  color: #ccc;
+  --btn-hover-bg: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .titlebar-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+[data-theme="dark"] .titlebar-btn.active {
+  color: #ffb347;
+  background: rgba(255, 179, 71, 0.15);
+}
+
+[data-theme="dark"] .titlebar-btn-close:hover {
+  background: rgba(220, 53, 69, 0.75);
+  color: #fff;
 }
 
 [data-theme="dark"] .editor-status {
