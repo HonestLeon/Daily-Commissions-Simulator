@@ -1,9 +1,17 @@
 import { useNoteStore } from "../stores/noteStore";
 import { useState, useRef, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function Sidebar() {
-  const { notes, activeId, setActive, createNote, deleteNote, renameNote } =
-    useNoteStore();
+  const {
+    notes,
+    activeId,
+    setActive,
+    setTemplatePickerOpen,
+    deleteNote,
+    renameNote,
+    saveAsTemplate,
+  } = useNoteStore();
   const [collapsed, setCollapsed] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     id: string;
@@ -21,8 +29,8 @@ export default function Sidebar() {
     }
   }, [editingId]);
 
-  const handleCreate = async () => {
-    await createNote();
+  const handleCreate = () => {
+    setTemplatePickerOpen(true);
   };
 
   const handleRightClick = (id: string, e: React.MouseEvent) => {
@@ -32,6 +40,18 @@ export default function Sidebar() {
 
   const handleDelete = async (id: string) => {
     await deleteNote(id);
+    setContextMenu(null);
+  };
+
+  const handleSaveAsTemplate = async (id: string) => {
+    try {
+      const content: string = await invoke("load_note", { id });
+      const note = notes.find((n) => n.id === id);
+      const name = note?.title || "未命名模板";
+      await saveAsTemplate(name, content);
+    } catch (e) {
+      console.error("Failed to save as template:", e);
+    }
     setContextMenu(null);
   };
 
@@ -159,6 +179,9 @@ export default function Sidebar() {
               }
             >
               重命名
+            </button>
+            <button onClick={() => handleSaveAsTemplate(contextMenu.id)}>
+              保存为模板
             </button>
             <button onClick={() => handleDelete(contextMenu.id)}>
               删除便签

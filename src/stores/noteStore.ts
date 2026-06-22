@@ -1,20 +1,26 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteMeta } from "../types";
+import type { NoteMeta, TemplateMeta } from "../types";
 
 interface NoteState {
   notes: NoteMeta[];
   activeId: string | null;
   isPinned: boolean;
   opacity: number;
+  templates: TemplateMeta[];
+  templatePickerOpen: boolean;
 
   fetchNotes: () => Promise<void>;
-  createNote: () => Promise<string | null>;
+  createNote: (templateId?: string) => Promise<string | null>;
   deleteNote: (id: string) => Promise<void>;
   renameNote: (id: string, title: string) => Promise<void>;
   setActive: (id: string) => void;
   togglePin: () => void;
   setOpacity: (value: number) => void;
+  fetchTemplates: () => Promise<void>;
+  saveAsTemplate: (name: string, content: string) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
+  setTemplatePickerOpen: (open: boolean) => void;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -22,6 +28,8 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   activeId: null,
   isPinned: false,
   opacity: 0.92,
+  templates: [],
+  templatePickerOpen: false,
 
   fetchNotes: async () => {
     try {
@@ -36,13 +44,16 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  createNote: async () => {
+  createNote: async (templateId?: string) => {
     try {
-      const note: NoteMeta = await invoke("create_note", {
-        title: "无标题便签",
-      });
+      let note: NoteMeta;
+      if (templateId) {
+        note = await invoke("create_note_from_template", { templateId });
+      } else {
+        note = await invoke("create_note", { title: "无标题便签" });
+      }
       const notes = [...get().notes, note];
-      set({ notes, activeId: note.id });
+      set({ notes, activeId: note.id, templatePickerOpen: false });
       return note.id;
     } catch (e) {
       console.error("Failed to create note:", e);
@@ -84,4 +95,33 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   togglePin: () => set({ isPinned: !get().isPinned }),
 
   setOpacity: (value: number) => set({ opacity: value }),
+
+  fetchTemplates: async () => {
+    try {
+      const templates: TemplateMeta[] = await invoke("list_templates");
+      set({ templates });
+    } catch (e) {
+      console.error("Failed to fetch templates:", e);
+    }
+  },
+
+  saveAsTemplate: async (name: string, content: string) => {
+    try {
+      const meta = await invoke<TemplateMeta>("save_template", { name, content });
+      set({ templates: [...get().templates, meta] });
+    } catch (e) {
+      console.error("Failed to save template:", e);
+    }
+  },
+
+  deleteTemplate: async (id: string) => {
+    try {
+      await invoke("delete_template", { id });
+      set({ templates: get().templates.filter((t) => t.id !== id) });
+    } catch (e) {
+      console.error("Failed to delete template:", e);
+    }
+  },
+
+  setTemplatePickerOpen: (open: boolean) => set({ templatePickerOpen: open }),
 }));

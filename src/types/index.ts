@@ -5,4 +5,11 @@ export interface NoteMeta {
   updated_at: string;
 }
 
+export interface TemplateMeta {
+  id: string;
+  name: string;
+  preset: boolean;        // true = built-in, false = user-created
+  created_at: string;
+}
+
 export type ViewMode = "edit" | "preview" | "split";

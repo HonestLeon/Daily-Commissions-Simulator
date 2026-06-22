@@ -5,10 +5,11 @@ import TitleBar from "./components/TitleBar";
 import Sidebar from "./components/Sidebar";
 import NoteEditor from "./components/NoteEditor";
 import SettingsPanel from "./components/SettingsPanel";
+import TemplatePicker from "./components/TemplatePicker";
 import { useNoteStore } from "./stores/noteStore";
 
 function App() {
-  const { fetchNotes, createNote, opacity } = useNoteStore();
+  const { fetchNotes, fetchTemplates, createNote, opacity } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -17,6 +18,7 @@ function App() {
     initialized.current = true;
 
     fetchNotes();
+    fetchTemplates();
 
     const unlisten = listen("tray-new-note", () => {
       createNote();
@@ -41,6 +43,7 @@ function App() {
         </main>
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <TemplatePicker />
     </div>
   );
 }

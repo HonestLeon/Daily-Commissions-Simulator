@@ -12,6 +12,14 @@ pub struct NoteMeta {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TemplateMeta {
+    pub id: String,
+    pub name: String,
+    pub preset: bool,
+    pub created_at: String,
+}
+
 fn notes_dir(app: &tauri::AppHandle) -> PathBuf {
     let path = app
         .path()
@@ -43,6 +51,79 @@ fn write_index(app: &tauri::AppHandle, notes: &[NoteMeta]) {
     let path = index_path(app);
     let data = serde_json::to_string_pretty(notes).unwrap_or_default();
     fs::write(&path, data).ok();
+}
+
+// ── Template helpers ──
+
+fn templates_dir(app: &tauri::AppHandle) -> PathBuf {
+    let path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("templates");
+    fs::create_dir_all(&path).ok();
+    path
+}
+
+fn templates_index_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("templates_index.json")
+}
+
+fn read_templates_index(app: &tauri::AppHandle) -> Vec<TemplateMeta> {
+    let path = templates_index_path(app);
+    if path.exists() {
+        let data = fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        vec![]
+    }
+}
+
+fn write_templates_index(app: &tauri::AppHandle, templates: &[TemplateMeta]) {
+    let path = templates_index_path(app);
+    let data = serde_json::to_string_pretty(templates).unwrap_or_default();
+    fs::write(&path, data).ok();
+}
+
+fn ensure_preset_templates(app: &tauri::AppHandle) {
+    let existing = read_templates_index(app);
+    if existing.iter().any(|t| t.preset) {
+        return; // already initialized
+    }
+
+    let presets = vec![
+        (
+            "每日待办",
+            "# 每日待办\n\n- [ ] 任务一\n- [ ] 任务二\n- [ ] 任务三\n- [ ] 任务四\n",
+        ),
+        (
+            "会议记录",
+            "# 会议记录\n\n**日期：**  \n**参会人：**  \n\n## 议题\n\n- \n\n## 决议\n\n- \n\n## 待办\n\n- [ ] \n",
+        ),
+        (
+            "周计划",
+            "# 周计划\n\n## 本周目标\n\n- \n\n## 周一\n- [ ] \n## 周二\n- [ ] \n## 周三\n- [ ] \n## 周四\n- [ ] \n## 周五\n- [ ] \n",
+        ),
+    ];
+
+    let now = timestamp_now();
+    let mut templates = existing;
+    for (name, content) in &presets {
+        let id = uuid::Uuid::new_v4().to_string();
+        let meta = TemplateMeta {
+            id: id.clone(),
+            name: name.to_string(),
+            preset: true,
+            created_at: now.clone(),
+        };
+        let md_path = templates_dir(app).join(format!("{}.md", &id));
+        fs::write(&md_path, content).ok();
+        templates.push(meta);
+    }
+    write_templates_index(app, &templates);
 }
 
 fn timestamp_now() -> String {
@@ -154,6 +235,93 @@ fn load_note(app: tauri::AppHandle, id: String) -> Result<String, String> {
     fs::read_to_string(&md_path).map_err(|e| e.to_string())
 }
 
+// ── Template commands ──
+
+#[tauri::command]
+fn list_templates(app: tauri::AppHandle) -> Vec<TemplateMeta> {
+    ensure_preset_templates(&app);
+    read_templates_index(&app)
+}
+
+#[tauri::command]
+fn load_template(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    let md_path = templates_dir(&app).join(format!("{}.md", &id));
+    fs::read_to_string(&md_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_template(app: tauri::AppHandle, name: String, content: String) -> Result<TemplateMeta, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = timestamp_now();
+    let meta = TemplateMeta {
+        id: id.clone(),
+        name,
+        preset: false,
+        created_at: now,
+    };
+    let md_path = templates_dir(&app).join(format!("{}.md", &id));
+    fs::write(&md_path, &content).map_err(|e| e.to_string())?;
+    let mut templates = read_templates_index(&app);
+    templates.push(meta.clone());
+    write_templates_index(&app, &templates);
+    Ok(meta)
+}
+
+#[tauri::command]
+fn delete_template(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    // Don't allow deleting preset templates
+    let templates = read_templates_index(&app);
+    if let Some(t) = templates.iter().find(|t| t.id == id) {
+        if t.preset {
+            return Err("不能删除预设模板".into());
+        }
+    }
+    let md_path = templates_dir(&app).join(format!("{}.md", &id));
+    fs::remove_file(&md_path).ok();
+    let mut templates = read_templates_index(&app);
+    templates.retain(|t| t.id != id);
+    write_templates_index(&app, &templates);
+    Ok(())
+}
+
+#[tauri::command]
+fn create_note_from_template(
+    app: tauri::AppHandle,
+    template_id: String,
+) -> Result<NoteMeta, String> {
+    let template_content = load_template_internal(&app, &template_id)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = timestamp_now();
+
+    // Extract title from first heading
+    let title = template_content
+        .lines()
+        .next()
+        .map(|l| l.trim_start_matches('#').trim().chars().take(50).collect())
+        .unwrap_or_else(|| "无标题便签".into());
+
+    let note = NoteMeta {
+        id: id.clone(),
+        title,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+
+    let md_path = notes_dir(&app).join(format!("{}.md", &id));
+    fs::write(&md_path, &template_content).map_err(|e| e.to_string())?;
+
+    let mut notes = read_index(&app);
+    notes.push(note.clone());
+    write_index(&app, &notes);
+
+    Ok(note)
+}
+
+fn load_template_internal(app: &tauri::AppHandle, id: &str) -> Result<String, String> {
+    let md_path = templates_dir(app).join(format!("{}.md", id));
+    fs::read_to_string(&md_path).map_err(|e| e.to_string())
+}
+
 fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -228,6 +396,11 @@ pub fn run() {
             rename_note,
             save_note,
             load_note,
+            list_templates,
+            load_template,
+            save_template,
+            delete_template,
+            create_note_from_template,
         ])
         .setup(|app| {
             #[cfg(windows)]
