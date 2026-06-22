@@ -727,48 +727,70 @@ body,
 
 /* ── Dark: Editor ── */
 
-[data-theme="dark"] .milkdown-wrapper {
-  --crepe-color-background: transparent;
-  --crepe-color-surface: rgba(255, 255, 255, 0.05);
-  --crepe-color-on-background: #e0e0e0;
-  --crepe-color-on-surface: #ddd;
-  --crepe-color-outline: rgba(255, 255, 255, 0.12);
+[data-theme="dark"] .milkdown-wrapper,
+[data-theme="dark"] .milkdown-wrapper .milkdown,
+[data-theme="dark"] .milkdown-wrapper .editor,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror,
+[data-theme="dark"] .milkdown-wrapper [class*="milkdown"] {
+  --crepe-color-background: transparent !important;
+  --crepe-color-surface: rgba(40, 40, 40, 0.6) !important;
+  --crepe-color-surface-low: rgba(45, 45, 45, 0.5) !important;
+  --crepe-color-on-background: #e0e0e0 !important;
+  --crepe-color-on-surface: #ddd !important;
+  --crepe-color-on-surface-variant: #bbb !important;
+  --crepe-color-outline: rgba(255, 255, 255, 0.12) !important;
+  --crepe-color-primary: #ffb347 !important;
+  --crepe-color-secondary: rgba(255, 179, 71, 0.15) !important;
+  --crepe-color-on-secondary: #ffe0b2 !important;
+  --crepe-color-inverse: #e0e0e0 !important;
+  --crepe-color-on-inverse: #1e1e1e !important;
+  --crepe-color-inline-code: #ff85c0 !important;
+  --crepe-color-hover: rgba(255, 255, 255, 0.06) !important;
+  --crepe-color-selected: rgba(255, 255, 255, 0.1) !important;
+  --crepe-color-inline-area: rgba(255, 255, 255, 0.06) !important;
+
+  color: #e0e0e0 !important;
+  background: transparent !important;
 }
 
-[data-theme="dark"] .milkdown-wrapper .milkdown .editor,
+[data-theme="dark"] .milkdown-wrapper,
+[data-theme="dark"] .milkdown-wrapper .milkdown,
+[data-theme="dark"] .milkdown-wrapper .editor,
+[data-theme="dark"] .milkdown-wrapper [class*="milkdown-"],
+[data-theme="dark"] .milkdown-wrapper [class*="crepe"] {
+  background: rgba(30, 30, 30, 0.85) !important;
+}
+
 [data-theme="dark"] .milkdown-wrapper .ProseMirror {
-  color: #e0e0e0;
-  caret-color: #e0e0e0;
+  color: #e0e0e0 !important;
+  caret-color: #e0e0e0 !important;
+  background: rgba(30, 30, 30, 0.85) !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror h1,
 [data-theme="dark"] .milkdown-wrapper .ProseMirror h2,
-[data-theme="dark"] .milkdown-wrapper .ProseMirror h3 {
-  color: #f0f0f0;
+[data-theme="dark"] .milkdown-wrapper .ProseMirror h3,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror h4 {
+  color: #f0f0f0 !important;
+}
+
+[data-theme="dark"] .milkdown-wrapper .ProseMirror p,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror li,
+[data-theme="dark"] .milkdown-wrapper .ProseMirror span {
+  color: #e0e0e0 !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror code {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ff85c0;
+  color: #ff85c0 !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror pre {
-  background: rgba(255, 255, 255, 0.04);
-  color: #ddd;
+  color: #ddd !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror blockquote {
-  border-left-color: rgba(255, 255, 255, 0.15);
-  color: #aaa;
-}
-
-[data-theme="dark"] .milkdown-wrapper .ProseMirror table {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="dark"] .milkdown-wrapper .ProseMirror th,
-[data-theme="dark"] .milkdown-wrapper .ProseMirror td {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-left-color: rgba(255, 255, 255, 0.2) !important;
+  color: #bbb !important;
 }
 
 /* ── Dark: Titlebar buttons brighter for visibility ── */
