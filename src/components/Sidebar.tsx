@@ -1,14 +1,25 @@
 import { useNoteStore } from "../stores/noteStore";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 export default function Sidebar() {
-  const { notes, activeId, setActive, createNote, deleteNote } = useNoteStore();
+  const { notes, activeId, setActive, createNote, deleteNote, renameNote } =
+    useNoteStore();
   const [collapsed, setCollapsed] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     id: string;
     x: number;
     y: number;
   } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
   const handleCreate = async () => {
     await createNote();
@@ -22,6 +33,29 @@ export default function Sidebar() {
   const handleDelete = async (id: string) => {
     await deleteNote(id);
     setContextMenu(null);
+  };
+
+  const startRename = (id: string, title: string) => {
+    setEditingId(id);
+    setEditTitle(title);
+    setContextMenu(null);
+  };
+
+  const confirmRename = async () => {
+    if (editingId && editTitle.trim()) {
+      await renameNote(editingId, editTitle.trim());
+    }
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      confirmRename();
+    } else if (e.key === "Escape") {
+      setEditingId(null);
+      setEditTitle("");
+    }
   };
 
   const formatDate = (iso: string) => {
@@ -67,13 +101,28 @@ export default function Sidebar() {
                   className={`sidebar-item ${note.id === activeId ? "active" : ""}`}
                   onClick={() => setActive(note.id)}
                   onContextMenu={(e) => handleRightClick(note.id, e)}
+                  onDoubleClick={() => startRename(note.id, note.title)}
                 >
-                  <div className="sidebar-item-title">
-                    {note.title || "无标题便签"}
-                  </div>
-                  <div className="sidebar-item-date">
-                    {formatDate(note.updated_at)}
-                  </div>
+                  {editingId === note.id ? (
+                    <input
+                      ref={editInputRef}
+                      className="sidebar-rename-input"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={handleRenameKeyDown}
+                      onBlur={confirmRename}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <>
+                      <div className="sidebar-item-title">
+                        {note.title || "无标题便签"}
+                      </div>
+                      <div className="sidebar-item-date">
+                        {formatDate(note.updated_at)}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {notes.length === 0 && (
@@ -101,10 +150,19 @@ export default function Sidebar() {
             className="context-menu"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
+            <button
+              onClick={() =>
+                startRename(
+                  contextMenu.id,
+                  notes.find((n) => n.id === contextMenu.id)?.title ?? ""
+                )
+              }
+            >
+              重命名
+            </button>
             <button onClick={() => handleDelete(contextMenu.id)}>
               删除便签
             </button>
-            <button onClick={() => setContextMenu(null)}>取消</button>
           </div>
         </>
       )}

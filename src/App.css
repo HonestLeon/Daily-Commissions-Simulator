@@ -188,6 +188,18 @@ body,
   text-overflow: ellipsis;
 }
 
+.sidebar-rename-input {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 13px;
+  border: 1px solid #4a9eff;
+  border-radius: 4px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: #222;
+  font-family: inherit;
+}
+
 .sidebar-item-date {
   font-size: 11px;
   color: #999;
@@ -503,6 +515,12 @@ body,
 
 [data-theme="dark"] .sidebar-item-title {
   color: #ddd;
+}
+
+[data-theme="dark"] .sidebar-rename-input {
+  background: rgba(60, 60, 60, 0.85);
+  color: #eee;
+  border-color: #5b9eff;
 }
 
 [data-theme="dark"] .sidebar-create-btn {

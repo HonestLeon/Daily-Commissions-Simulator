@@ -138,6 +138,17 @@ fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), S
 }
 
 #[tauri::command]
+fn rename_note(app: tauri::AppHandle, id: String, new_title: String) -> Result<(), String> {
+    let mut notes = read_index(&app);
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.title = new_title.trim().chars().take(100).collect();
+        note.updated_at = timestamp_now();
+    }
+    write_index(&app, &notes);
+    Ok(())
+}
+
+#[tauri::command]
 fn load_note(app: tauri::AppHandle, id: String) -> Result<String, String> {
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
     fs::read_to_string(&md_path).map_err(|e| e.to_string())
@@ -214,6 +225,7 @@ pub fn run() {
             list_notes,
             create_note,
             delete_note,
+            rename_note,
             save_note,
             load_note,
         ])
