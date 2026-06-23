@@ -89,15 +89,35 @@ fn write_templates_index(app: &tauri::AppHandle, templates: &[TemplateMeta]) {
 }
 
 fn ensure_preset_templates(app: &tauri::AppHandle) {
-    let existing = read_templates_index(app);
-    if existing.iter().any(|t| t.preset) {
-        return; // already initialized
+    let preset_version: u32 = 2;
+    let version_path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("preset_version.txt");
+    let stored_version: u32 = fs::read_to_string(&version_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+
+    if stored_version >= preset_version {
+        return; // up to date
     }
 
-    let presets = vec![
+    // Remove old presets
+    let existing = read_templates_index(app);
+    for t in &existing {
+        if t.preset {
+            let md_path = templates_dir(app).join(format!("{}.md", &t.id));
+            fs::remove_file(&md_path).ok();
+        }
+    }
+    let mut templates: Vec<TemplateMeta> = existing.into_iter().filter(|t| !t.preset).collect();
+
+    let presets: Vec<(&str, &str)> = vec![
         (
             "每日待办",
-            "# 每日待办\n\n- [ ] 任务一\n- [ ] 任务二\n- [ ] 任务三\n- [ ] 任务四\n",
+            "### 每日待办\n\n#### 必做\n\n- [ ] \n- [ ] \n\n#### 学习/工作\n\n- [ ] \n- [ ] \n\n#### 生活\n\n- [ ] \n- [ ] \n\n#### 其他\n\n- [ ] \n- [ ] \n",
         ),
         (
             "会议记录",
@@ -110,7 +130,6 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
     ];
 
     let now = timestamp_now();
-    let mut templates = existing;
     for (name, content) in &presets {
         let id = uuid::Uuid::new_v4().to_string();
         let meta = TemplateMeta {
@@ -124,6 +143,7 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
         templates.push(meta);
     }
     write_templates_index(app, &templates);
+    fs::write(&version_path, preset_version.to_string()).ok();
 }
 
 fn timestamp_now() -> String {
@@ -290,15 +310,28 @@ fn create_note_from_template(
     template_id: String,
 ) -> Result<NoteMeta, String> {
     let template_content = load_template_internal(&app, &template_id)?;
+    let templates_index = read_templates_index(&app);
+    let template_name = templates_index
+        .iter()
+        .find(|t| t.id == template_id)
+        .map(|t| t.name.clone())
+        .unwrap_or_default();
+
     let id = uuid::Uuid::new_v4().to_string();
     let now = timestamp_now();
 
-    // Extract title from first heading
     let title = template_content
         .lines()
         .next()
         .map(|l| l.trim_start_matches('#').trim().chars().take(50).collect())
         .unwrap_or_else(|| "无标题便签".into());
+
+    // Smart inheritance for daily todo
+    let final_content = if template_name == "每日待办" {
+        inherit_daily_todo(&app, &template_content)
+    } else {
+        template_content.clone()
+    };
 
     let note = NoteMeta {
         id: id.clone(),
@@ -308,13 +341,104 @@ fn create_note_from_template(
     };
 
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
-    fs::write(&md_path, &template_content).map_err(|e| e.to_string())?;
+    fs::write(&md_path, &final_content).map_err(|e| e.to_string())?;
 
     let mut notes = read_index(&app);
     notes.push(note.clone());
     write_index(&app, &notes);
 
     Ok(note)
+}
+
+/// Find the most recent daily todo note and inherit unchecked items
+fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
+    // Find most recently updated note that looks like a daily todo
+    let notes = read_index(app);
+    let mut sorted: Vec<_> = notes.iter().collect();
+    sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+    let prev_content = sorted.iter().find_map(|n| {
+        let content = fs::read_to_string(notes_dir(app).join(format!("{}.md", &n.id))).ok()?;
+        if content.contains("### 每日待办") {
+            Some(content)
+        } else {
+            None
+        }
+    });
+
+    let Some(prev) = prev_content else {
+        return template.to_string();
+    };
+
+    // Parse sections from previous note: #### SectionName\n\n...content...
+    let prev_sections = parse_md_sections(&prev);
+    let template_sections = parse_md_sections(template);
+
+    let mut result = template.to_string();
+
+    for (sec_name, _tmpl_content) in &template_sections {
+        if let Some(prev_sec) = prev_sections.get(sec_name) {
+            let items: Vec<&str> = if sec_name == "必做" {
+                // Carry all items from 必做
+                prev_sec
+                    .lines()
+                    .filter(|l| l.trim_start().starts_with("- ["))
+                    .collect()
+            } else {
+                // Carry only unchecked items from other sections
+                prev_sec
+                    .lines()
+                    .filter(|l| l.trim_start().starts_with("- [ ]"))
+                    .collect()
+            };
+
+            if !items.is_empty() {
+                let insertion = items.join("\n");
+                // Find the section in the template and replace its items
+                // Look for "#### SectionName\n\n" and insert carried items after the blank line
+                let pattern = format!("#### {}\n\n", sec_name);
+                if let Some(pos) = result.find(&pattern) {
+                    let after_header = pos + pattern.len();
+                    // Find where the next section starts (or end of string)
+                    let next_section = result[after_header..]
+                        .find("\n#### ")
+                        .map(|p| after_header + p)
+                        .unwrap_or(result.len());
+                    let before = &result[..after_header];
+                    let after = &result[next_section..];
+                    result = format!("{}{}\n{}", before, insertion, after);
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Parse markdown into sections keyed by #### heading name
+fn parse_md_sections(content: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut current_section = String::new();
+    let mut current_name = String::new();
+
+    for line in content.lines() {
+        if line.starts_with("#### ") {
+            // Save previous section
+            if !current_name.is_empty() {
+                map.insert(current_name.clone(), current_section.trim().to_string());
+            }
+            current_name = line.trim_start_matches("#### ").trim().to_string();
+            current_section = String::new();
+        } else if !current_name.is_empty() {
+            current_section.push_str(line);
+            current_section.push('\n');
+        }
+    }
+    // Save last section
+    if !current_name.is_empty() {
+        map.insert(current_name, current_section.trim().to_string());
+    }
+    map
 }
 
 fn load_template_internal(app: &tauri::AppHandle, id: &str) -> Result<String, String> {
