@@ -89,7 +89,7 @@ fn write_templates_index(app: &tauri::AppHandle, templates: &[TemplateMeta]) {
 }
 
 fn ensure_preset_templates(app: &tauri::AppHandle) {
-    let preset_version: u32 = 2;
+    let preset_version: u32 = 3;
     let version_path = app
         .path()
         .app_data_dir()
@@ -117,7 +117,7 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
     let presets: Vec<(&str, &str)> = vec![
         (
             "每日待办",
-            "### 每日待办\n\n#### 必做\n\n- [ ] \n- [ ] \n\n#### 学习/工作\n\n- [ ] \n- [ ] \n\n#### 生活\n\n- [ ] \n- [ ] \n\n#### 其他\n\n- [ ] \n- [ ] \n",
+            "### 每日待办\n\n#### 必做\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 学习/工作\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 生活\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 其他\n\n- [ ] 待办事项\n- [ ] 待办事项\n",
         ),
         (
             "会议记录",
@@ -352,7 +352,6 @@ fn create_note_from_template(
 
 /// Find the most recent daily todo note and inherit unchecked items
 fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
-    // Find most recently updated note that looks like a daily todo
     let notes = read_index(app);
     let mut sorted: Vec<_> = notes.iter().collect();
     sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -367,51 +366,75 @@ fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
     });
 
     let Some(prev) = prev_content else {
+        eprintln!("[inherit] No previous daily todo found");
         return template.to_string();
     };
+    eprintln!("[inherit] Found previous daily todo");
 
-    // Parse sections from previous note: #### SectionName\n\n...content...
     let prev_sections = parse_md_sections(&prev);
     let template_sections = parse_md_sections(template);
 
-    let mut result = template.to_string();
+    eprintln!("[inherit] prev sections: {:?}", prev_sections.keys().collect::<Vec<_>>());
+    eprintln!("[inherit] tmpl sections: {:?}", template_sections.keys().collect::<Vec<_>>());
 
-    for (sec_name, _tmpl_content) in &template_sections {
-        if let Some(prev_sec) = prev_sections.get(sec_name) {
-            let items: Vec<&str> = if sec_name == "必做" {
-                // Carry all items from 必做
-                prev_sec
-                    .lines()
-                    .filter(|l| l.trim_start().starts_with("- ["))
-                    .collect()
-            } else {
-                // Carry only unchecked items from other sections
-                prev_sec
-                    .lines()
-                    .filter(|l| l.trim_start().starts_with("- [ ]"))
-                    .collect()
-            };
+    // Build result from scratch: template heading lines + inherited items per section
+    let mut result = String::new();
+    let mut in_section: Option<&str> = None;
 
-            if !items.is_empty() {
-                let insertion = items.join("\n");
-                // Find the section in the template and replace its items
-                // Look for "#### SectionName\n\n" and insert carried items after the blank line
-                let pattern = format!("#### {}\n\n", sec_name);
-                if let Some(pos) = result.find(&pattern) {
-                    let after_header = pos + pattern.len();
-                    // Find where the next section starts (or end of string)
-                    let next_section = result[after_header..]
-                        .find("\n#### ")
-                        .map(|p| after_header + p)
-                        .unwrap_or(result.len());
-                    let before = &result[..after_header];
-                    let after = &result[next_section..];
-                    result = format!("{}{}\n{}", before, insertion, after);
+    for line in template.lines() {
+        if line.starts_with("#### ") {
+            // Starting a new section
+            in_section = Some(line.trim_start_matches("#### ").trim());
+            result.push_str(line);
+            result.push('\n');
+            result.push('\n');
+
+            // Insert inherited items for this section
+            if let Some(sec_name) = in_section {
+                let mut inserted = false;
+                if let Some(prev_sec) = prev_sections.get(sec_name) {
+                    let items: Vec<&str> = if sec_name == "必做" {
+                        prev_sec
+                            .lines()
+                            .filter(|l| l.trim_start().starts_with("- ["))
+                            .collect()
+                    } else {
+                        prev_sec
+                            .lines()
+                            .filter(|l| l.trim_start().starts_with("- [ ]"))
+                            .collect()
+                    };
+
+                    if !items.is_empty() {
+                        for item in &items {
+                            result.push_str(item);
+                            result.push('\n');
+                        }
+                        eprintln!("[inherit] {} — inherited {} items", sec_name, items.len());
+                        inserted = true;
+                    }
                 }
+                if !inserted {
+                    // No previous items: blank checkbox
+                    result.push_str("- [ ] \n");
+                }
+                continue; // skip template's placeholder lines for this section
             }
+        }
+
+        // Skip template's placeholder items
+        if line.trim_start().starts_with("- [ ] 待办事项") {
+            continue;
+        }
+
+        // Write non-section lines
+        if in_section.is_none() || !line.trim_start().starts_with("- [") {
+            result.push_str(line);
+            result.push('\n');
         }
     }
 
+    eprintln!("[inherit] Result:\n{}", result);
     result
 }
 
