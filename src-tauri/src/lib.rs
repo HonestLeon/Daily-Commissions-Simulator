@@ -89,7 +89,7 @@ fn write_templates_index(app: &tauri::AppHandle, templates: &[TemplateMeta]) {
 }
 
 fn ensure_preset_templates(app: &tauri::AppHandle) {
-    let preset_version: u32 = 3;
+    let preset_version: u32 = 4;
     let version_path = app
         .path()
         .app_data_dir()
@@ -117,7 +117,7 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
     let presets: Vec<(&str, &str)> = vec![
         (
             "每日待办",
-            "### 每日待办\n\n#### 必做\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 学习/工作\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 生活\n\n- [ ] 待办事项\n- [ ] 待办事项\n\n#### 其他\n\n- [ ] 待办事项\n- [ ] 待办事项\n",
+            "### 每日待办\n\n#### 必做\n\n- [ ] \n- [ ] \n\n#### 学习/工作\n\n- [ ] \n- [ ] \n\n#### 生活\n\n- [ ] \n- [ ] \n\n#### 其他\n\n- [ ] \n- [ ] \n",
         ),
         (
             "会议记录",
@@ -391,20 +391,25 @@ fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
 
             // Insert inherited items for this section
             if let Some(sec_name) = in_section {
+                eprintln!("[inherit] Looking for section: {}", sec_name);
                 let mut inserted = false;
                 if let Some(prev_sec) = prev_sections.get(sec_name) {
+                    eprintln!("[inherit] {} content: {:?}", sec_name, prev_sec);
+                    let is_checkbox = |l: &&str| -> bool {
+                        let t = l.trim_start();
+                        t.starts_with("- [") || t.starts_with("* [")
+                    };
+                    let is_unchecked = |l: &&str| -> bool {
+                        let t = l.trim_start();
+                        t.starts_with("- [ ]") || t.starts_with("* [ ]")
+                    };
                     let items: Vec<&str> = if sec_name == "必做" {
-                        prev_sec
-                            .lines()
-                            .filter(|l| l.trim_start().starts_with("- ["))
-                            .collect()
+                        prev_sec.lines().filter(is_checkbox).collect()
                     } else {
-                        prev_sec
-                            .lines()
-                            .filter(|l| l.trim_start().starts_with("- [ ]"))
-                            .collect()
+                        prev_sec.lines().filter(is_unchecked).collect()
                     };
 
+                    eprintln!("[inherit] {} filtered items: {:?}", sec_name, items);
                     if !items.is_empty() {
                         for item in &items {
                             result.push_str(item);
@@ -422,8 +427,9 @@ fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
             }
         }
 
-        // Skip template's placeholder items
-        if line.trim_start().starts_with("- [ ] 待办事项") {
+        // Skip template's placeholder items (blank checkboxes without text)
+        let trimmed = line.trim_start();
+        if trimmed == "- [ ]" || trimmed == "- [ ] " || trimmed == "* [ ]" || trimmed == "* [ ] " || trimmed == "- [ ] 待办事项" || trimmed == "* [ ] 待办事项" {
             continue;
         }
 
