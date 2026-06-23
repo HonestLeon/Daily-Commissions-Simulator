@@ -9,6 +9,7 @@ interface NoteState {
   opacity: number;
   templates: TemplateMeta[];
   templatePickerOpen: boolean;
+  closeToTray: boolean | null;  // null = first time (not set yet)
 
   fetchNotes: () => Promise<void>;
   createNote: (templateId?: string) => Promise<string | null>;
@@ -21,6 +22,8 @@ interface NoteState {
   saveAsTemplate: (name: string, content: string) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   setTemplatePickerOpen: (open: boolean) => void;
+  fetchCloseBehavior: () => Promise<void>;
+  setCloseBehavior: (closeToTray: boolean) => Promise<void>;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -30,6 +33,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   opacity: 0.92,
   templates: [],
   templatePickerOpen: false,
+  closeToTray: null,
 
   fetchNotes: async () => {
     try {
@@ -124,4 +128,22 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   },
 
   setTemplatePickerOpen: (open: boolean) => set({ templatePickerOpen: open }),
+
+  fetchCloseBehavior: async () => {
+    try {
+      const tray: boolean = await invoke("get_close_behavior");
+      set({ closeToTray: tray });
+    } catch {
+      set({ closeToTray: true }); // default
+    }
+  },
+
+  setCloseBehavior: async (closeToTray: boolean) => {
+    try {
+      await invoke("set_close_behavior", { closeToTray });
+      set({ closeToTray });
+    } catch (e) {
+      console.error("Failed to set close behavior:", e);
+    }
+  },
 }));

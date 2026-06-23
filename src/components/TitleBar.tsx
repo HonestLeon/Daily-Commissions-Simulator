@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNoteStore } from "../stores/noteStore";
+import FirstCloseDialog from "./FirstCloseDialog";
 
 interface Props {
   onSettings: () => void;
 }
 
 export default function TitleBar({ onSettings }: Props) {
-  const { isPinned, opacity, togglePin, setOpacity } = useNoteStore();
+  const { isPinned, opacity, closeToTray, setCloseBehavior, togglePin, setOpacity } =
+    useNoteStore();
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
 
   const handlePin = async () => {
     const win = getCurrentWindow();
@@ -16,64 +20,90 @@ export default function TitleBar({ onSettings }: Props) {
   };
 
   const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setOpacity(val);
+    setOpacity(Number(e.target.value));
   };
 
-  const handleHide = () => {
-    getCurrentWindow().hide();
+  // Minimize: standard minimize, stays in taskbar
+  const handleMinimize = async () => {
+    await getCurrentWindow().minimize();
+  };
+
+  // Close: check preference
+  const handleClose = async () => {
+    if (closeToTray === null) {
+      // First time: show dialog
+      setShowCloseDialog(true);
+    } else if (closeToTray) {
+      await getCurrentWindow().hide();
+    } else {
+      await getCurrentWindow().close();
+    }
+  };
+
+  const handleCloseChoice = async (tray: boolean) => {
+    setShowCloseDialog(false);
+    await setCloseBehavior(tray);
+    if (tray) {
+      await getCurrentWindow().hide();
+    } else {
+      await getCurrentWindow().close();
+    }
   };
 
   return (
-    <div
-      className="titlebar"
-      data-tauri-drag-region
-      onDoubleClick={(e) => {
-        if ((e.target as HTMLElement).hasAttribute("data-tauri-drag-region")) {
-          const win = getCurrentWindow();
-          win.isMaximized().then((max) => {
-            if (max) win.unmaximize();
-            else win.maximize();
-          });
-        }
-      }}
-    >
-      <span className="titlebar-title">轻量便签</span>
-      <div style={{ flex: 1 }} data-tauri-drag-region />
-      <div className="titlebar-controls">
-        <button
-          className={`titlebar-btn ${isPinned ? "active" : ""}`}
-          onClick={handlePin}
-          title={isPinned ? "取消置顶" : "窗口置顶"}
-        >
-          📌
-        </button>
+    <>
+      <div
+        className="titlebar"
+        data-tauri-drag-region
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).hasAttribute("data-tauri-drag-region")) {
+            const win = getCurrentWindow();
+            win.isMaximized().then((max) => {
+              if (max) win.unmaximize();
+              else win.maximize();
+            });
+          }
+        }}
+      >
+        <span className="titlebar-title">轻量便签</span>
+        <div style={{ flex: 1 }} data-tauri-drag-region />
+        <div className="titlebar-controls">
+          <button
+            className={`titlebar-btn ${isPinned ? "active" : ""}`}
+            onClick={handlePin}
+            title={isPinned ? "取消置顶" : "窗口置顶"}
+          >
+            📌
+          </button>
 
-        <div className="titlebar-slider" title={`透明度: ${Math.round(opacity * 100)}%`}>
-          <span style={{ fontSize: 12 }}>🎚</span>
-          <input
-            type="range"
-            min="0.25"
-            max="1"
-            step="0.01"
-            value={opacity}
-            onChange={handleOpacityChange}
-            style={{ width: 60, cursor: "pointer" }}
-          />
+          <div className="titlebar-slider" title={`透明度: ${Math.round(opacity * 100)}%`}>
+            <span style={{ fontSize: 12 }}>🎚</span>
+            <input
+              type="range"
+              min="0.25"
+              max="1"
+              step="0.01"
+              value={opacity}
+              onChange={handleOpacityChange}
+              style={{ width: 60, cursor: "pointer" }}
+            />
+          </div>
+
+          <button className="titlebar-btn" onClick={onSettings} title="设置">
+            ⚙
+          </button>
+
+          <button className="titlebar-btn" onClick={handleMinimize} title="最小化到任务栏">
+            ─
+          </button>
+
+          <button className="titlebar-btn titlebar-btn-close" onClick={handleClose} title="关闭">
+            ✕
+          </button>
         </div>
-
-        <button className="titlebar-btn" onClick={onSettings} title="设置">
-          ⚙
-        </button>
-
-        <button className="titlebar-btn" onClick={handleHide} title="隐藏到托盘">
-          ─
-        </button>
-
-        <button className="titlebar-btn titlebar-btn-close" onClick={handleHide} title="关闭到托盘">
-          ✕
-        </button>
       </div>
-    </div>
+
+      <FirstCloseDialog open={showCloseDialog} onSelect={handleCloseChoice} />
+    </>
   );
 }

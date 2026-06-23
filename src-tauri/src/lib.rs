@@ -322,6 +322,52 @@ fn load_template_internal(app: &tauri::AppHandle, id: &str) -> Result<String, St
     fs::read_to_string(&md_path).map_err(|e| e.to_string())
 }
 
+// ── App config ──
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct AppConfig {
+    close_to_tray: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self { close_to_tray: true }
+    }
+}
+
+fn config_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config.json")
+}
+
+fn load_config(app: &tauri::AppHandle) -> AppConfig {
+    let path = config_path(app);
+    if path.exists() {
+        let data = fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        AppConfig::default()
+    }
+}
+
+fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
+    let path = config_path(app);
+    let data = serde_json::to_string_pretty(config).unwrap_or_default();
+    fs::write(&path, data).ok();
+}
+
+#[tauri::command]
+fn get_close_behavior(app: tauri::AppHandle) -> bool {
+    load_config(&app).close_to_tray
+}
+
+#[tauri::command]
+fn set_close_behavior(app: tauri::AppHandle, close_to_tray: bool) {
+    save_config(&app, &AppConfig { close_to_tray });
+}
+
 fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -401,6 +447,8 @@ pub fn run() {
             save_template,
             delete_template,
             create_note_from_template,
+            get_close_behavior,
+            set_close_behavior,
         ])
         .setup(|app| {
             #[cfg(windows)]
@@ -413,12 +461,17 @@ pub fn run() {
 
             let _tray = build_tray(app)?;
 
+            let app_handle = app.handle().clone();
             let window = app.get_webview_window("main").unwrap();
             let w_clone = window.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = w_clone.hide();
+                    let config = load_config(&app_handle);
+                    if config.close_to_tray {
+                        api.prevent_close();
+                        let _ = w_clone.hide();
+                    }
+                    // else: allow close → app exits
                 }
             });
 

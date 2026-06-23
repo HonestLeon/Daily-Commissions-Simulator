@@ -8,7 +8,8 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const { templates, deleteTemplate, fetchTemplates } = useNoteStore();
+  const { templates, closeToTray, deleteTemplate, fetchTemplates, setCloseBehavior } =
+    useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     return document.documentElement.dataset.theme === "dark";
@@ -78,6 +79,23 @@ export default function SettingsPanel({ open, onClose }: Props) {
               </div>
             </div>
             <div className={`settings-toggle ${darkMode ? "on" : "off"}`}>
+              <div className="settings-toggle-knob" />
+            </div>
+          </label>
+
+          <label
+            className="settings-row"
+            onClick={() => setCloseBehavior(!closeToTray)}
+          >
+            <div className="settings-label">
+              <div className="settings-label-title">关闭行为</div>
+              <div className="settings-label-desc">
+                {closeToTray
+                  ? "点击关闭时最小化到托盘"
+                  : "点击关闭时直接退出程序"}
+              </div>
+            </div>
+            <div className={`settings-toggle ${closeToTray ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
             </div>
           </label>
