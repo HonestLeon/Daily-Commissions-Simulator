@@ -110,10 +110,22 @@ body,
   cursor: pointer;
 }
 
+.titlebar-opacity-value {
+  min-width: 32px;
+  font-size: 11px;
+  color: #666;
+  text-align: right;
+  user-select: none;
+}
+
+[data-theme="dark"] .titlebar-opacity-value {
+  color: #aaa;
+}
+
 /* === Sidebar === */
 .sidebar {
-  width: 190px;
-  min-width: 190px;
+  width: 160px;
+  min-width: 160px;
   background: rgba(243, 244, 246, 0.5);
   backdrop-filter: blur(20px);
   border-right: 1px solid rgba(255, 255, 255, 0.35);
@@ -164,6 +176,7 @@ body,
 }
 
 .sidebar-item {
+  position: relative;
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
@@ -178,6 +191,21 @@ body,
 .sidebar-item.active {
   background: rgba(255, 255, 255, 0.7);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: #4a9eff;
+}
+
+[data-theme="dark"] .sidebar-item.active::before {
+  background: #ffb347;
 }
 
 .sidebar-item-title {
@@ -981,4 +1009,88 @@ body,
 
 [data-theme="dark"] .titlebar-slider input[type="range"]::-webkit-slider-thumb {
   background: #aaa;
+}
+
+/* =============================================
+   Dark Mode: Milkdown floating elements
+   These are rendered outside .milkdown-wrapper
+   ============================================= */
+
+[data-theme="dark"] .milkdown-menu,
+[data-theme="dark"] .milkdown-menu-wrapper,
+[data-theme="dark"] .milkdown-tooltip,
+[data-theme="dark"] .milkdown-slash-menu,
+[data-theme="dark"] .milkdown-link-preview,
+[data-theme="dark"] .milkdown-link-edit,
+[data-theme="dark"] .milkdown-emoji-menu,
+[data-theme="dark"] .milkdown-code-block-menu,
+[data-theme="dark"] .milkdown-block-handle,
+[data-theme="dark"] .milkdown-table-selector,
+[data-theme="dark"] .milkdown-table-tooltip,
+[data-theme="dark"] .milkdown-placeholder,
+[data-theme="dark"] [class*="milkdown-menu"],
+[data-theme="dark"] [class*="milkdown-tooltip"],
+[data-theme="dark"] [class*="slash-menu"],
+[data-theme="dark"] [class*="link-edit"],
+[data-theme="dark"] [class*="link-preview"] {
+  background: rgba(40, 40, 40, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #e0e0e0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .milkdown-menu button,
+[data-theme="dark"] .milkdown-tooltip button,
+[data-theme="dark"] .milkdown-slash-menu button,
+[data-theme="dark"] .milkdown-link-edit button,
+[data-theme="dark"] .milkdown-link-preview button,
+[data-theme="dark"] [class*="milkdown-menu"] button,
+[data-theme="dark"] [class*="milkdown-tooltip"] button,
+[data-theme="dark"] [class*="slash-menu"] button,
+[data-theme="dark"] [class*="link-edit"] button,
+[data-theme="dark"] [class*="link-preview"] button {
+  color: #e0e0e0 !important;
+  background: transparent !important;
+}
+
+[data-theme="dark"] .milkdown-menu button:hover,
+[data-theme="dark"] .milkdown-tooltip button:hover,
+[data-theme="dark"] .milkdown-slash-menu button:hover,
+[data-theme="dark"] .milkdown-link-edit button:hover,
+[data-theme="dark"] .milkdown-link-preview button:hover,
+[data-theme="dark"] [class*="milkdown-menu"] button:hover,
+[data-theme="dark"] [class*="milkdown-tooltip"] button:hover,
+[data-theme="dark"] [class*="slash-menu"] button:hover,
+[data-theme="dark"] [class*="link-edit"] button:hover,
+[data-theme="dark"] [class*="link-preview"] button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .milkdown-menu button.active,
+[data-theme="dark"] .milkdown-menu button:active,
+[data-theme="dark"] [class*="milkdown-menu"] button.active,
+[data-theme="dark"] [class*="milkdown-menu"] button:active {
+  color: #ffb347 !important;
+  background: rgba(255, 179, 71, 0.15) !important;
+}
+
+[data-theme="dark"] .milkdown-slash-menu-item-selected,
+[data-theme="dark"] [class*="slash-menu"] [class*="selected"],
+[data-theme="dark"] [class*="slash-menu"] [class*="active"] {
+  background: rgba(255, 179, 71, 0.15) !important;
+  color: #ffb347 !important;
+}
+
+[data-theme="dark"] .milkdown-menu-divider,
+[data-theme="dark"] [class*="milkdown-menu"] [class*="divider"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .milkdown-link-edit input,
+[data-theme="dark"] .milkdown-link-preview input,
+[data-theme="dark"] [class*="link-edit"] input,
+[data-theme="dark"] [class*="link-preview"] input {
+  background: rgba(30, 30, 30, 0.95) !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }

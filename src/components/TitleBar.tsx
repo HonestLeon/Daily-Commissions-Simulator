@@ -87,6 +87,7 @@ export default function TitleBar({ onSettings }: Props) {
               onChange={handleOpacityChange}
               style={{ width: 60, cursor: "pointer" }}
             />
+            <span className="titlebar-opacity-value">{Math.round(opacity * 100)}%</span>
           </div>
 
           <button className="titlebar-btn" onClick={onSettings} title="设置">
