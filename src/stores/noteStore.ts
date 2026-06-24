@@ -7,6 +7,7 @@ interface NoteState {
   activeId: string | null;
   isPinned: boolean;
   opacity: number;
+  darkMode: boolean;
   templates: TemplateMeta[];
   templatePickerOpen: boolean;
   closeToTray: boolean | null;  // null = first time (not set yet)
@@ -18,6 +19,9 @@ interface NoteState {
   setActive: (id: string) => void;
   togglePin: () => void;
   setOpacity: (value: number) => void;
+  fetchOpacity: () => Promise<void>;
+  fetchDarkMode: () => Promise<void>;
+  setDarkMode: (dark: boolean) => Promise<void>;
   fetchTemplates: () => Promise<void>;
   saveAsTemplate: (name: string, content: string) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
@@ -31,6 +35,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   activeId: null,
   isPinned: false,
   opacity: 0.92,
+  darkMode: false,
   templates: [],
   templatePickerOpen: false,
   closeToTray: null,
@@ -98,7 +103,41 @@ export const useNoteStore = create<NoteState>((set, get) => ({
 
   togglePin: () => set({ isPinned: !get().isPinned }),
 
-  setOpacity: (value: number) => set({ opacity: value }),
+  setOpacity: (value: number) => {
+    set({ opacity: value });
+    invoke("set_opacity", { opacity: value }).catch((e) =>
+      console.error("Failed to persist opacity:", e)
+    );
+  },
+
+  fetchOpacity: async () => {
+    try {
+      const opacity: number = await invoke("get_opacity");
+      set({ opacity });
+    } catch {
+      // keep default 0.92
+    }
+  },
+
+  fetchDarkMode: async () => {
+    try {
+      const dark: boolean = await invoke("get_dark_mode");
+      set({ darkMode: dark });
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch {
+      // keep default light
+    }
+  },
+
+  setDarkMode: async (dark: boolean) => {
+    try {
+      await invoke("set_dark_mode", { darkMode: dark });
+      set({ darkMode: dark });
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch (e) {
+      console.error("Failed to set dark mode:", e);
+    }
+  },
 
   fetchTemplates: async () => {
     try {

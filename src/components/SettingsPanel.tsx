@@ -8,12 +8,16 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const { templates, closeToTray, deleteTemplate, fetchTemplates, setCloseBehavior } =
-    useNoteStore();
+  const {
+    templates,
+    closeToTray,
+    darkMode,
+    deleteTemplate,
+    fetchTemplates,
+    setCloseBehavior,
+    setDarkMode,
+  } = useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => {
-    return document.documentElement.dataset.theme === "dark";
-  });
 
   useEffect(() => {
     if (open) {
@@ -36,9 +40,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
   };
 
   const toggleDarkMode = () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    document.documentElement.dataset.theme = next ? "dark" : "light";
+    setDarkMode(!darkMode);
   };
 
   if (!open) return null;

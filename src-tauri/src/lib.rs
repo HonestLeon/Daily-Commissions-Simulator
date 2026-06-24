@@ -222,15 +222,19 @@ fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), S
     let mut notes = read_index(&app);
     if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
         note.updated_at = timestamp_now();
+        // 仅当首行是 # 标题时才更新便签标题，否则保留旧标题（如手动重命名的标题）
         if let Some(first_line) = content.lines().next() {
-            let title: String = first_line
-                .trim_start_matches('#')
-                .trim()
-                .chars()
-                .take(50)
-                .collect();
-            if !title.is_empty() {
-                note.title = title;
+            let trimmed = first_line.trim();
+            if trimmed.starts_with('#') {
+                let title: String = trimmed
+                    .trim_start_matches('#')
+                    .trim()
+                    .chars()
+                    .take(50)
+                    .collect();
+                if !title.is_empty() {
+                    note.title = title;
+                }
             }
         }
     }
@@ -480,11 +484,17 @@ fn load_template_internal(app: &tauri::AppHandle, id: &str) -> Result<String, St
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AppConfig {
     close_to_tray: bool,
+    dark_mode: bool,
+    opacity: f32,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { close_to_tray: true }
+        Self {
+            close_to_tray: true,
+            dark_mode: false,
+            opacity: 0.92,
+        }
     }
 }
 
@@ -518,18 +528,54 @@ fn get_close_behavior(app: tauri::AppHandle) -> bool {
 
 #[tauri::command]
 fn set_close_behavior(app: tauri::AppHandle, close_to_tray: bool) {
-    save_config(&app, &AppConfig { close_to_tray });
+    let mut config = load_config(&app);
+    config.close_to_tray = close_to_tray;
+    save_config(&app, &config);
+}
+
+#[tauri::command]
+fn get_dark_mode(app: tauri::AppHandle) -> bool {
+    load_config(&app).dark_mode
+}
+
+#[tauri::command]
+fn set_dark_mode(app: tauri::AppHandle, dark_mode: bool) {
+    let mut config = load_config(&app);
+    config.dark_mode = dark_mode;
+    save_config(&app, &config);
+}
+
+#[tauri::command]
+fn get_opacity(app: tauri::AppHandle) -> f32 {
+    load_config(&app).opacity
+}
+
+#[tauri::command]
+fn set_opacity(app: tauri::AppHandle, opacity: f32) {
+    let mut config = load_config(&app);
+    config.opacity = opacity;
+    save_config(&app, &config);
 }
 
 fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri_plugin_autostart::ManagerExt;
 
     let icon = app.default_window_icon().unwrap().clone();
 
+    // 读取当前自启状态以设置初始菜单文本
+    let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart_label = if autostart_enabled {
+        "开机自启：开"
+    } else {
+        "开机自启：关"
+    };
+
     let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
     let new_note = MenuItemBuilder::with_id("new_note", "新建便签").build(app)?;
-    let autostart = MenuItemBuilder::with_id("autostart", "开机自启：关").build(app)?;
+    let autostart = MenuItemBuilder::with_id("autostart", autostart_label).build(app)?;
+    let autostart_clone = autostart.clone();
     let separator = tauri::menu::PredefinedMenuItem::separator(app)?;
     let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
@@ -557,7 +603,26 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
                         let _ = w.emit("tray-new-note", ());
                     }
                 }
-                "autostart" => {}
+                "autostart" => {
+                    // 切换开机自启状态并更新菜单文本
+                    let autolaunch = app.autolaunch();
+                    let new_state = match autolaunch.is_enabled() {
+                        Ok(true) => {
+                            let _ = autolaunch.disable();
+                            false
+                        }
+                        _ => {
+                            let _ = autolaunch.enable();
+                            true
+                        }
+                    };
+                    let label = if new_state {
+                        "开机自启：开"
+                    } else {
+                        "开机自启：关"
+                    };
+                    let _ = autostart_clone.set_text(label);
+                }
                 "quit" => app.exit(0),
                 _ => {}
             }
@@ -602,6 +667,10 @@ pub fn run() {
             create_note_from_template,
             get_close_behavior,
             set_close_behavior,
+            get_dark_mode,
+            set_dark_mode,
+            get_opacity,
+            set_opacity,
         ])
         .setup(|app| {
             #[cfg(windows)]

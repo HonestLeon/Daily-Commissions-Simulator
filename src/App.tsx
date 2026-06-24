@@ -9,8 +9,15 @@ import TemplatePicker from "./components/TemplatePicker";
 import { useNoteStore } from "./stores/noteStore";
 
 function App() {
-  const { fetchNotes, fetchTemplates, fetchCloseBehavior, createNote, opacity } =
-    useNoteStore();
+  const {
+    fetchNotes,
+    fetchTemplates,
+    fetchCloseBehavior,
+    fetchDarkMode,
+    fetchOpacity,
+    createNote,
+    opacity,
+  } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -21,6 +28,8 @@ function App() {
     fetchNotes();
     fetchTemplates();
     fetchCloseBehavior();
+    fetchDarkMode();
+    fetchOpacity();
 
     const unlisten = listen("tray-new-note", () => {
       createNote();
