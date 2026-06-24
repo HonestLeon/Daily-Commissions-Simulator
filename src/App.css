@@ -373,6 +373,15 @@ body,
   --crepe-color-outline: rgba(0, 0, 0, 0.12);
 }
 
+/* Make the editor content area transparent so .editor-area background shows through */
+.milkdown-wrapper,
+.milkdown-wrapper .milkdown,
+.milkdown-wrapper .editor,
+.milkdown-wrapper .ProseMirror {
+  --crepe-color-background: transparent !important;
+  background: transparent !important;
+}
+
 /* Milkdown editor text/background */
 .milkdown-wrapper .milkdown .editor,
 .milkdown-wrapper .ProseMirror {
@@ -834,13 +843,13 @@ body,
 [data-theme="dark"] .milkdown-wrapper .editor,
 [data-theme="dark"] .milkdown-wrapper [class*="milkdown-"],
 [data-theme="dark"] .milkdown-wrapper [class*="crepe"] {
-  background: rgba(30, 30, 30, 0.85) !important;
+  background: rgba(30, 30, 30, calc(0.85 * var(--app-bg-opacity))) !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror {
   color: #e0e0e0 !important;
   caret-color: #e0e0e0 !important;
-  background: rgba(30, 30, 30, 0.85) !important;
+  background: rgba(30, 30, 30, calc(0.85 * var(--app-bg-opacity))) !important;
 }
 
 [data-theme="dark"] .milkdown-wrapper .ProseMirror h1,
