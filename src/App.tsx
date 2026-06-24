@@ -45,7 +45,7 @@ function App() {
   }, []);
 
   return (
-    <div className="app" style={{ opacity }}>
+    <div className="app" style={{ "--app-bg-opacity": opacity } as React.CSSProperties}>
       <TitleBar onSettings={() => setSettingsOpen(true)} />
       <div className="app-body">
         <Sidebar />

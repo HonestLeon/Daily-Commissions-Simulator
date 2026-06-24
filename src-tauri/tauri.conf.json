@@ -22,10 +22,7 @@
         "resizable": true,
         "decorations": false,
         "transparent": true,
-        "alwaysOnTop": false,
-        "windowEffects": {
-          "effects": ["acrylic"]
-        }
+        "alwaysOnTop": false
       }
     ],
     "security": {

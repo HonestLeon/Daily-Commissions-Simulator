@@ -673,14 +673,6 @@ pub fn run() {
             set_opacity,
         ])
         .setup(|app| {
-            #[cfg(windows)]
-            {
-                let window = app.get_webview_window("main").unwrap();
-                if let Err(e) = window_vibrancy::apply_acrylic(&window, None) {
-                    eprintln!("Failed to apply acrylic: {e}");
-                }
-            }
-
             let _tray = build_tray(app)?;
 
             let app_handle = app.handle().clone();
