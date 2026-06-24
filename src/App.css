@@ -1,3 +1,9 @@
+@property --app-bg-opacity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
 /* === Global Reset === */
 html,
 body,
@@ -20,7 +26,7 @@ body,
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-  transition: opacity 0.2s;
+  transition: --app-bg-opacity 0.2s;
 }
 
 .app-body {
@@ -35,8 +41,7 @@ body,
   align-items: center;
   height: 36px;
   padding: 0 8px;
-  background: rgba(245, 245, 245, 0.6);
-  backdrop-filter: blur(24px);
+  background: rgba(245, 245, 245, calc(0.6 * var(--app-bg-opacity)));
   border-bottom: 1px solid rgba(255, 255, 255, 0.35);
   flex-shrink: 0;
 }
@@ -126,8 +131,7 @@ body,
 .sidebar {
   width: 160px;
   min-width: 160px;
-  background: rgba(243, 244, 246, 0.5);
-  backdrop-filter: blur(20px);
+  background: rgba(243, 244, 246, calc(0.5 * var(--app-bg-opacity)));
   border-right: 1px solid rgba(255, 255, 255, 0.35);
   display: flex;
   flex-direction: column;
@@ -307,8 +311,7 @@ body,
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, calc(0.72 * var(--app-bg-opacity)));
   overflow: hidden;
 }
 
@@ -741,7 +744,7 @@ body,
 }
 
 [data-theme="dark"] .titlebar {
-  background: rgba(30, 30, 30, 0.65);
+  background: rgba(30, 30, 30, calc(0.65 * var(--app-bg-opacity)));
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -750,7 +753,7 @@ body,
 }
 
 [data-theme="dark"] .sidebar {
-  background: rgba(25, 25, 25, 0.55);
+  background: rgba(25, 25, 25, calc(0.55 * var(--app-bg-opacity)));
   border-right-color: rgba(255, 255, 255, 0.06);
 }
 
@@ -791,7 +794,7 @@ body,
 }
 
 [data-theme="dark"] .editor-area {
-  background: rgba(20, 20, 20, 0.72);
+  background: rgba(20, 20, 20, calc(0.72 * var(--app-bg-opacity)));
 }
 
 [data-theme="dark"] .editor-placeholder {
