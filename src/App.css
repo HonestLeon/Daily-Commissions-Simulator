@@ -200,6 +200,54 @@ body,
   background: rgba(255, 255, 255, 0.8);
 }
 
+.sidebar-group {
+  margin-bottom: 4px;
+}
+
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.sidebar-group-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.sidebar-group-toggle {
+  font-size: 10px;
+  color: #888;
+  width: 12px;
+  text-align: center;
+}
+
+.sidebar-group-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-group-count {
+  font-size: 10px;
+  color: #888;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+.sidebar-group-items {
+  padding-left: 4px;
+}
+
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
@@ -814,6 +862,23 @@ body,
 [data-theme="dark"] .sidebar-search-input:focus {
   border-color: #5b9eff;
   background: rgba(50, 50, 50, 0.8);
+}
+
+[data-theme="dark"] .sidebar-group-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .sidebar-group-toggle {
+  color: #888;
+}
+
+[data-theme="dark"] .sidebar-group-name {
+  color: #aaa;
+}
+
+[data-theme="dark"] .sidebar-group-count {
+  color: #888;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .sidebar-item {

@@ -1,10 +1,17 @@
 import { useNoteStore } from "../stores/noteStore";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { NoteMeta } from "../types";
+
+const BLANK_GROUP_KEY = "__blank__";
+const BLANK_GROUP_NAME = "空白便签";
+const UNKNOWN_TEMPLATE_NAME = "未知模板";
+const COLLAPSED_STORAGE_KEY = "sidebar-collapsed-groups";
 
 export default function Sidebar() {
   const {
     notes,
+    templates,
     activeId,
     setActive,
     setTemplatePickerOpen,
@@ -14,6 +21,14 @@ export default function Sidebar() {
   } = useNoteStore();
   const [collapsed, setCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
   const [contextMenu, setContextMenu] = useState<{
     id: string;
     x: number;
@@ -29,12 +44,51 @@ export default function Sidebar() {
       )
     : notes;
 
+  const groups = useMemo(() => {
+    const map = new Map<string, NoteMeta[]>();
+    filteredNotes.forEach((note) => {
+      const key = note.template_id || BLANK_GROUP_KEY;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(note);
+    });
+
+    return Array.from(map.entries())
+      .map(([key, notes]) => {
+        const name =
+          key === BLANK_GROUP_KEY
+            ? BLANK_GROUP_NAME
+            : templates.find((t) => t.id === key)?.name || UNKNOWN_TEMPLATE_NAME;
+        return { key, name, notes };
+      })
+      .sort((a, b) => {
+        if (a.key === BLANK_GROUP_KEY) return -1;
+        if (b.key === BLANK_GROUP_KEY) return 1;
+        return a.name.localeCompare(b.name, "zh-CN");
+      });
+  }, [filteredNotes, templates]);
+
   useEffect(() => {
     if (editingId && editInputRef.current) {
       editInputRef.current.focus();
       editInputRef.current.select();
     }
   }, [editingId]);
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const isGroupCollapsed = (key: string, notesInGroup: NoteMeta[]) => {
+    if (!collapsedGroups.has(key)) return false;
+    // Always expand the group that contains the active note
+    return !notesInGroup.some((n) => n.id === activeId);
+  };
 
   const handleCreate = () => {
     setTemplatePickerOpen(true);
@@ -105,6 +159,37 @@ export default function Sidebar() {
     }
   };
 
+  const renderNoteItem = (note: NoteMeta) => (
+    <div
+      key={note.id}
+      className={`sidebar-item ${note.id === activeId ? "active" : ""}`}
+      onClick={() => setActive(note.id)}
+      onContextMenu={(e) => handleRightClick(note.id, e)}
+      onDoubleClick={() => startRename(note.id, note.title)}
+    >
+      {editingId === note.id ? (
+        <input
+          ref={editInputRef}
+          className="sidebar-rename-input"
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onKeyDown={handleRenameKeyDown}
+          onBlur={confirmRename}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <>
+          <div className="sidebar-item-title">
+            {note.title || "无标题便签"}
+          </div>
+          <div className="sidebar-item-date">
+            {formatDate(note.updated_at)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <>
       <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
@@ -132,37 +217,31 @@ export default function Sidebar() {
             </div>
 
             <div className="sidebar-list">
-              {filteredNotes.map((note) => (
-                <div
-                  key={note.id}
-                  className={`sidebar-item ${note.id === activeId ? "active" : ""}`}
-                  onClick={() => setActive(note.id)}
-                  onContextMenu={(e) => handleRightClick(note.id, e)}
-                  onDoubleClick={() => startRename(note.id, note.title)}
-                >
-                  {editingId === note.id ? (
-                    <input
-                      ref={editInputRef}
-                      className="sidebar-rename-input"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={handleRenameKeyDown}
-                      onBlur={confirmRename}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <>
-                      <div className="sidebar-item-title">
-                        {note.title || "无标题便签"}
+              {groups.map((group) => {
+                const expanded = !isGroupCollapsed(group.key, group.notes);
+                return (
+                  <div key={group.key} className="sidebar-group">
+                    <div
+                      className="sidebar-group-header"
+                      onClick={() => toggleGroup(group.key)}
+                    >
+                      <span className="sidebar-group-toggle">
+                        {expanded ? "▼" : "▶"}
+                      </span>
+                      <span className="sidebar-group-name">{group.name}</span>
+                      <span className="sidebar-group-count">
+                        {group.notes.length}
+                      </span>
+                    </div>
+                    {expanded && (
+                      <div className="sidebar-group-items">
+                        {group.notes.map(renderNoteItem)}
                       </div>
-                      <div className="sidebar-item-date">
-                        {formatDate(note.updated_at)}
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-              {filteredNotes.length === 0 && (
+                    )}
+                  </div>
+                );
+              })}
+              {groups.length === 0 && (
                 <div className="sidebar-empty">
                   {searchQuery.trim() ? "无匹配便签" : "暂无便签"}
                 </div>

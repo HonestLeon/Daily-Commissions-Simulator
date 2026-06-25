@@ -3,6 +3,7 @@ export interface NoteMeta {
   title: string;
   created_at: string;
   updated_at: string;
+  template_id?: string;
 }
 
 export interface TemplateMeta {
