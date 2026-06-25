@@ -707,12 +707,12 @@ pub fn run() {
             set_opacity,
         ])
         .setup(|app| {
-            ensure_preset_templates(app);
-            migrate_note_template_ids(app);
+            let app_handle = app.handle().clone();
+            ensure_preset_templates(&app_handle);
+            migrate_note_template_ids(&app_handle);
 
             let _tray = build_tray(app)?;
 
-            let app_handle = app.handle().clone();
             let window = app.get_webview_window("main").unwrap();
             let w_clone = window.clone();
             window.on_window_event(move |event| {
