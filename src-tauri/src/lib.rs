@@ -10,6 +10,8 @@ pub struct NoteMeta {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub template_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -192,6 +194,7 @@ fn create_note(app: tauri::AppHandle, title: String) -> Result<NoteMeta, String>
         title,
         created_at: now.clone(),
         updated_at: now,
+        template_id: None,
     };
 
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
@@ -342,6 +345,7 @@ fn create_note_from_template(
         title,
         created_at: now.clone(),
         updated_at: now,
+        template_id: Some(template_id),
     };
 
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
