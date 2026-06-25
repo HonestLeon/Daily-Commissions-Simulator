@@ -148,6 +148,36 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
     fs::write(&version_path, preset_version.to_string()).ok();
 }
 
+/// One-time migration: infer template_id for existing notes created before
+/// the field was introduced. Matches note title against template names.
+fn migrate_note_template_ids(app: &tauri::AppHandle) {
+    let templates = read_templates_index(app);
+    if templates.is_empty() {
+        return;
+    }
+
+    let mut notes = read_index(app);
+    let mut changed = false;
+
+    for note in notes.iter_mut() {
+        if note.template_id.is_some() {
+            continue;
+        }
+
+        for template in &templates {
+            if note.title == template.name {
+                note.template_id = Some(template.id.clone());
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    if changed {
+        write_index(app, &notes);
+    }
+}
+
 fn timestamp_now() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -677,6 +707,9 @@ pub fn run() {
             set_opacity,
         ])
         .setup(|app| {
+            ensure_preset_templates(app);
+            migrate_note_template_ids(app);
+
             let _tray = build_tray(app)?;
 
             let app_handle = app.handle().clone();
