@@ -84,11 +84,7 @@ export default function Sidebar() {
     });
   };
 
-  const isGroupCollapsed = (key: string, notesInGroup: NoteMeta[]) => {
-    if (!collapsedGroups.has(key)) return false;
-    // Always expand the group that contains the active note
-    return !notesInGroup.some((n) => n.id === activeId);
-  };
+  const isGroupCollapsed = (key: string) => collapsedGroups.has(key);
 
   const handleCreate = () => {
     setTemplatePickerOpen(true);
@@ -218,7 +214,7 @@ export default function Sidebar() {
 
             <div className="sidebar-list">
               {groups.map((group) => {
-                const expanded = !isGroupCollapsed(group.key, group.notes);
+                const expanded = !isGroupCollapsed(group.key);
                 return (
                   <div key={group.key} className="sidebar-group">
                     <div
