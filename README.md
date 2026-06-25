@@ -1,8 +1,59 @@
 # 轻量便签 (Lightweight Sticky Notes)
 
-一个基于 **Tauri 2 + React 19 + Milkdown** 构建的 Windows 半透明 Markdown 便签应用。
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" alt="轻量便签 Logo" width="96" />
+</p>
 
-🎯 绿色免安装，11MB，轻量常驻。
+<p align="center">
+  一个基于 <strong>Tauri 2 + React 19 + Milkdown</strong> 构建的 Windows 半透明 Markdown 便签应用。
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Tauri-2.0-24C8D8?logo=tauri&logoColor=white" alt="Tauri" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
+</p>
+
+> 🎯 绿色免安装，约 11MB，轻量常驻桌面。
+> 🏆 本作品参与「TRAE AI 创造力大赛」学习工作赛道。
+
+---
+
+## 目录
+
+- [产品亮点](#产品亮点)
+- [功能特性](#功能特性)
+- [安装](#安装)
+- [使用指南](#使用指南)
+- [快捷键](#快捷键)
+- [截图展示](#截图展示)
+- [技术栈](#技术栈)
+- [数据存储](#数据存储)
+- [TRAE 实践过程](#TRAE-实践过程)
+- [开发](#开发)
+- [项目结构](#项目结构)
+- [常见问题](#常见问题)
+- [路线图](#路线图)
+- [更新日志](#更新日志)
+- [贡献指南](#贡献指南)
+- [License](#license)
+
+---
+
+## 产品亮点
+
+| 亮点 | 说明 |
+| ---- | ---- |
+| 🪶 极致轻量 | 绿色版仅约 11MB，无需安装即可运行，无额外运行时依赖。 |
+| 📝 Markdown 原生 | 采用 Milkdown Crepe WYSIWYG 编辑器，便签内容即为标准 Markdown。 |
+| 🧠 智能继承 | 「每日待办」模板自动继承前一天未完成事项，减少重复录入。 |
+| 🎨 半透明 Acrylic | 支持 25%~100% 透明度调节，工作时可见但不遮挡。 |
+| 🌙 深浅主题 | 完整的浅色 / 暗色模式适配，编辑区同样沉浸。 |
+| 🧩 模板系统 | 内置 3 套预设模板，支持自定义模板沉淀个人工作流。 |
+
+---
 
 ## 功能特性
 
@@ -109,6 +160,44 @@
 3. 第二天再次使用「每日待办」模板创建新便签
 4. 自动带入：必做全部内容 + 其他模块中未完成项
 
+### 自定义模板
+
+1. 编辑任意便签到理想格式
+2. 在侧边栏右键该便签 →「保存为模板」
+3. 新建便签时即可在「我的模板」分组中看到
+
+---
+
+## 快捷键
+
+> 快捷键可在后续版本中自定义，当前默认映射如下：
+
+| 快捷键 | 功能 |
+| ------ | ---- |
+| `Ctrl + N` | 新建便签 |
+| `Ctrl + D` | 删除当前便签 |
+| `Ctrl + ,` | 打开设置 |
+| `Ctrl + =` / `Ctrl + -` | 增加 / 降低窗口透明度 |
+| `Ctrl + Shift + T` | 切换置顶状态 |
+| `Ctrl + Shift + L` | 切换浅色 / 暗色主题 |
+| `Alt + F4` | 关闭窗口 |
+
+---
+
+## 截图展示
+
+> 下列截图基于 v0.1.0 版本，实际界面可能随版本迭代略有差异。
+
+| 浅色模式编辑 | 暗色模式编辑 | 模板选择 |
+| ------------ | ------------ | -------- |
+| ![浅色模式](docs/screenshots/light-mode.png) | ![暗色模式](docs/screenshots/dark-mode.png) | ![模板选择](docs/screenshots/template-picker.png) |
+
+| 设置面板 | 系统托盘菜单 | 每日待办继承 |
+| -------- | ------------ | -------------- |
+| ![设置](docs/screenshots/settings.png) | ![托盘](docs/screenshots/tray.png) | ![继承](docs/screenshots/inherit.png) |
+
+> 提示：首次运行若未准备截图，上述占位图不会显示。可在 `docs/screenshots/` 目录放入同名 PNG 后重新查看。
+
 ---
 
 ## 技术栈
@@ -131,7 +220,7 @@
 
 ```text
 %APPDATA%\com.liurr.lightweight-sticky-notes\
-├── config.json               # 应用配置（关闭行为等）
+├── config.json               # 应用配置（关闭行为、主题、透明度等）
 ├── notes_index.json          # 便签索引
 ├── templates_index.json      # 模板索引
 ├── preset_version.txt        # 预设模板版本号
@@ -142,6 +231,31 @@
 ```
 
 备份数据只需复制整个文件夹。便签内容为标准 `.md` 文件，可用任意 Markdown 编辑器打开。
+
+---
+
+## TRAE 实践过程
+
+本作品使用 **TRAE Work / TRAE IDE** 作为核心创作工具完成，以下为关键实践节点：
+
+### 关键 Session ID
+
+| 阶段 | Session ID | 说明 |
+| ---- | ---------- | ---- |
+| 需求拆解 | `<待补充>` | 与 TRAE 一起梳理「每日待办智能继承」的产品逻辑 |
+| UI 设计 | `<待补充>` | 确定 Acrylic 半透明标题栏、侧边栏、编辑区布局 |
+| 核心功能 | `<待补充>` | 实现模板系统、Zustand 状态管理、自动保存 |
+| 托盘集成 | `<待补充>` | 实现系统托盘右键菜单与开机自启动 |
+| 打包构建 | `<待补充>` | 完成 NSIS 安装包与绿色版产物 |
+
+> 参赛提交时请将 `<待补充>` 替换为真实 Session ID，并补充不少于 3 张关键步骤截图。
+
+### 用 TRAE 解决的关键问题
+
+1. **智能继承逻辑**：将「前一天未完成待办自动带入新便签」的规则拆解为模块级匹配，避免简单全文复制。
+2. **Rust 与前端状态同步**：通过 Tauri Command 实现窗口置顶、透明度、主题等设置的持久化。
+3. **Milkdown 与 React 集成**：封装 Crepe 编辑器组件，处理聚焦、内容同步与任务列表点击事件。
+4. **Acrylic 透明窗口体验**：调整 Tauri 窗口配置与 CSS 变量，使透明背景在不同主题下保持可读。
 
 ---
 
@@ -171,6 +285,15 @@ npm run tauri build
 产物：
 - 绿色版：`src-tauri/target/release/lightweight-sticky-notes.exe`
 - 安装版：`src-tauri/target/release/bundle/nsis/轻量便签_0.1.0_x64-setup.exe`
+
+### 开发脚本
+
+```bash
+npm run dev        # 单独启动前端 Vite 开发服务器
+npm run build      # 构建前端产物
+npm run preview    # 预览前端产物
+npm run tauri dev  # 启动 Tauri 开发模式
+```
 
 ---
 
@@ -202,11 +325,78 @@ notebook/
 │   ├── icons/                    # 应用图标
 │   ├── tauri.conf.json           # Tauri 配置
 │   └── Cargo.toml
+├── docs/                         # 文档与截图
 ├── package.json
 ├── vite.config.ts
 └── tsconfig.json
 ```
 
+---
+
+## 常见问题
+
+### Q1：为什么绿色版首次启动较慢？
+
+Windows Defender 等杀毒软件会对首次运行的 exe 进行扫描，这是正常现象。后续启动会更快。
+
+### Q2：如何备份我的便签？
+
+复制 `%APPDATA%\com.liurr.lightweight-sticky-notes\` 整个文件夹到安全位置即可。重装系统或换电脑后粘贴回原路径即可恢复。
+
+### Q3：能否在 macOS / Linux 上运行？
+
+当前版本主要针对 Windows 打包与测试。Tauri 2 本身支持跨平台，源码具备跨平台潜力，欢迎提交 PR 扩展构建流程。
+
+### Q4：如何彻底卸载？
+
+- 绿色版：直接删除 exe 与数据文件夹即可。
+- 安装版：在「设置 → 应用」中卸载，数据文件夹需手动删除。
+
+### Q5：任务列表的勾选状态不同步？
+
+请确保点击的是编辑器渲染出的任务列表复选框。若仍有问题，可尝试切换便签后重新进入。
+
+---
+
+## 路线图
+
+- [x] Markdown WYSIWYG 编辑
+- [x] 多便签管理与侧边栏
+- [x] 预设模板 + 自定义模板
+- [x] 每日待办智能继承
+- [x] 置顶、透明度、暗色模式
+- [x] 系统托盘与开机自启
+- [x] 自动保存与窗口位置记忆
+- [ ] 自定义快捷键
+- [ ] 云同步 / WebDAV 备份
+- [ ] 标签与搜索
+- [ ] 导出为 PDF / HTML
+- [ ] 插件扩展机制
+
+---
+
+## 更新日志
+
+### v0.1.0（2026-06-24）
+
+- 初始版本发布
+- 支持 Markdown WYSIWYG 编辑
+- 支持多便签、模板系统、每日待办智能继承
+- 支持 Acrylic 半透明窗口、置顶、透明度、暗色模式
+- 支持系统托盘、开机自启、自动保存、窗口位置记忆
+
+---
+
+## 贡献指南
+
+欢迎 Issue 和 PR！在提交代码前，请确保：
+
+1. 代码遵循项目现有 TypeScript / Rust 风格
+2. 通过 `npm run build` 成功构建
+3. 在 PR 中说明改动目的与影响范围
+
+---
+
 ## License
 
-MIT
+MIT © 2026 HonestLeon
