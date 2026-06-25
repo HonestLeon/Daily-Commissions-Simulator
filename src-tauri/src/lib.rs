@@ -156,10 +156,28 @@ fn migrate_note_template_ids(app: &tauri::AppHandle) {
         return;
     }
 
+    let daily_todo_id = daily_todo_template_id(app);
     let mut notes = read_index(app);
     let mut changed = false;
 
     for note in notes.iter_mut() {
+        let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
+            || note.title == "每日待办";
+
+        if is_daily_todo {
+            // Existing daily todo notes: assign template_id and update title with date suffix
+            if note.template_id.is_none() {
+                note.template_id = daily_todo_id.clone();
+                changed = true;
+            }
+            let expected = format_daily_todo_title(&note.updated_at);
+            if note.title != expected {
+                note.title = expected;
+                changed = true;
+            }
+            continue;
+        }
+
         if note.template_id.is_some() {
             continue;
         }
@@ -194,6 +212,25 @@ fn timestamp_now() -> String {
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
         y, m, d, hours, mins, secs_rem
     )
+}
+
+fn daily_todo_template_id(app: &tauri::AppHandle) -> Option<String> {
+    read_templates_index(app)
+        .iter()
+        .find(|t| t.name == "每日待办")
+        .map(|t| t.id.clone())
+}
+
+/// Format a daily todo title with the date suffix, e.g. "每日待办0625".
+/// `iso` is expected to be in the format returned by `timestamp_now()`.
+fn format_daily_todo_title(iso: &str) -> String {
+    if iso.len() >= 10 {
+        let month = &iso[5..7];
+        let day = &iso[8..10];
+        format!("每日待办{}{}", month, day)
+    } else {
+        "每日待办".to_string()
+    }
 }
 
 fn days_to_ymd(days: i64) -> (i64, i64, i64) {
@@ -252,11 +289,13 @@ fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), S
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
     fs::write(&md_path, &content).map_err(|e| e.to_string())?;
 
+    let daily_todo_id = daily_todo_template_id(&app);
     let mut notes = read_index(&app);
     if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
         note.updated_at = timestamp_now();
-        // 仅当首行是 # 标题时才更新便签标题，否则保留旧标题（如手动重命名的标题）
-        if let Some(first_line) = content.lines().next() {
+
+        // Extract base title from the first heading line, if any
+        let base_title = content.lines().next().and_then(|first_line| {
             let trimmed = first_line.trim();
             if trimmed.starts_with('#') {
                 let title: String = trimmed
@@ -266,9 +305,20 @@ fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), S
                     .take(50)
                     .collect();
                 if !title.is_empty() {
-                    note.title = title;
+                    return Some(title);
                 }
             }
+            None
+        });
+
+        // Daily todo notes always get a date suffix title, e.g. "每日待办0625"
+        let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
+            || base_title.as_deref() == Some("每日待办");
+        if is_daily_todo {
+            note.title = format_daily_todo_title(&note.updated_at);
+        } else if let Some(title) = base_title {
+            // 仅当首行是 # 标题时才更新便签标题，否则保留旧标题（如手动重命名的标题）
+            note.title = title;
         }
     }
     write_index(&app, &notes);
@@ -357,11 +407,16 @@ fn create_note_from_template(
     let id = uuid::Uuid::new_v4().to_string();
     let now = timestamp_now();
 
-    let title = template_content
+    let mut title = template_content
         .lines()
         .next()
         .map(|l| l.trim_start_matches('#').trim().chars().take(50).collect())
         .unwrap_or_else(|| "无标题便签".into());
+
+    // Daily todo titles automatically include the date suffix, e.g. "每日待办0625"
+    if template_name == "每日待办" {
+        title = format_daily_todo_title(&now);
+    }
 
     // Smart inheritance for daily todo
     let final_content = if template_name == "每日待办" {
