@@ -13,6 +13,7 @@ export default function Sidebar() {
     saveAsTemplate,
   } = useNoteStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     id: string;
     x: number;
@@ -21,6 +22,12 @@ export default function Sidebar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredNotes = searchQuery.trim()
+    ? notes.filter((note) =>
+        note.title.toLowerCase().includes(searchQuery.toLowerCase().trim())
+      )
+    : notes;
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -114,8 +121,18 @@ export default function Sidebar() {
 
         {!collapsed && (
           <>
+            <div className="sidebar-search">
+              <input
+                type="text"
+                className="sidebar-search-input"
+                placeholder="搜索便签..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
             <div className="sidebar-list">
-              {notes.map((note) => (
+              {filteredNotes.map((note) => (
                 <div
                   key={note.id}
                   className={`sidebar-item ${note.id === activeId ? "active" : ""}`}
@@ -145,8 +162,10 @@ export default function Sidebar() {
                   )}
                 </div>
               ))}
-              {notes.length === 0 && (
-                <div className="sidebar-empty">暂无便签</div>
+              {filteredNotes.length === 0 && (
+                <div className="sidebar-empty">
+                  {searchQuery.trim() ? "无匹配便签" : "暂无便签"}
+                </div>
               )}
             </div>
 
