@@ -4,6 +4,7 @@ export interface NoteMeta {
   created_at: string;
   updated_at: string;
   template_id?: string;
+  title_edited?: boolean;
 }
 
 export interface TemplateMeta {

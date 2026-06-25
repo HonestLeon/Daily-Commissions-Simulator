@@ -12,6 +12,8 @@ pub struct NoteMeta {
     pub updated_at: String,
     #[serde(default)]
     pub template_id: Option<String>,
+    #[serde(default)]
+    pub title_edited: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -148,8 +150,7 @@ fn ensure_preset_templates(app: &tauri::AppHandle) {
     fs::write(&version_path, preset_version.to_string()).ok();
 }
 
-/// One-time migration: infer template_id for existing notes created before
-/// the field was introduced. Matches note title against template names.
+/// One-time migration: infer template_id and title_edited for existing notes.
 fn migrate_note_template_ids(app: &tauri::AppHandle) {
     let templates = read_templates_index(app);
     if templates.is_empty() {
@@ -161,32 +162,36 @@ fn migrate_note_template_ids(app: &tauri::AppHandle) {
     let mut changed = false;
 
     for note in notes.iter_mut() {
-        let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
-            || note.title == "每日待办";
-
-        if is_daily_todo {
-            // Existing daily todo notes: assign template_id and update title with date suffix
-            if note.template_id.is_none() {
+        // Infer template_id for notes that don't have it yet
+        if note.template_id.is_none() {
+            if note.title == "每日待办" {
                 note.template_id = daily_todo_id.clone();
                 changed = true;
+            } else {
+                for template in &templates {
+                    if note.title == template.name {
+                        note.template_id = Some(template.id.clone());
+                        changed = true;
+                        break;
+                    }
+                }
             }
-            let expected = format_daily_todo_title(&note.updated_at);
-            if note.title != expected {
-                note.title = expected;
-                changed = true;
-            }
-            continue;
         }
 
-        if note.template_id.is_some() {
-            continue;
-        }
-
-        for template in &templates {
-            if note.title == template.name {
-                note.template_id = Some(template.id.clone());
+        // Infer title_edited: if the current title does not match any auto-generated
+        // form, the user must have renamed it manually.
+        if !note.title_edited {
+            if is_auto_title(app, note) {
+                // Keep auto titles up to date (e.g. old "每日待办" -> "每日待办0625")
+                if let Some(expected) = expected_auto_title(app, note) {
+                    if note.title != expected {
+                        note.title = expected;
+                        changed = true;
+                    }
+                }
+            } else {
+                note.title_edited = true;
                 changed = true;
-                break;
             }
         }
     }
@@ -194,6 +199,45 @@ fn migrate_note_template_ids(app: &tauri::AppHandle) {
     if changed {
         write_index(app, &notes);
     }
+}
+
+/// Returns the title that would be generated automatically for this note.
+fn expected_auto_title(app: &tauri::AppHandle, note: &NoteMeta) -> Option<String> {
+    let daily_todo_id = daily_todo_template_id(app);
+    let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
+        || note.title == "每日待办";
+    if is_daily_todo {
+        return Some(format_daily_todo_title(&note.updated_at));
+    }
+
+    if let Some(ref tid) = note.template_id {
+        let templates = read_templates_index(app);
+        if let Some(t) = templates.iter().find(|t| t.id == *tid) {
+            return Some(t.name.clone());
+        }
+    }
+
+    Some("无标题便签".to_string())
+}
+
+/// Checks whether the current title is one of the accepted auto-generated forms.
+fn is_auto_title(app: &tauri::AppHandle, note: &NoteMeta) -> bool {
+    let daily_todo_id = daily_todo_template_id(app);
+    let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
+        || note.title == "每日待办";
+    if is_daily_todo {
+        let expected = format_daily_todo_title(&note.updated_at);
+        return note.title == expected || note.title == "每日待办";
+    }
+
+    if let Some(ref tid) = note.template_id {
+        let templates = read_templates_index(app);
+        if let Some(t) = templates.iter().find(|t| t.id == *tid) {
+            return note.title == t.name;
+        }
+    }
+
+    note.title == "无标题便签"
 }
 
 fn timestamp_now() -> String {
@@ -262,6 +306,7 @@ fn create_note(app: tauri::AppHandle, title: String) -> Result<NoteMeta, String>
         created_at: now.clone(),
         updated_at: now,
         template_id: None,
+        title_edited: false,
     };
 
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
@@ -294,31 +339,32 @@ fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), S
     if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
         note.updated_at = timestamp_now();
 
-        // Extract base title from the first heading line, if any
-        let base_title = content.lines().next().and_then(|first_line| {
-            let trimmed = first_line.trim();
-            if trimmed.starts_with('#') {
-                let title: String = trimmed
-                    .trim_start_matches('#')
-                    .trim()
-                    .chars()
-                    .take(50)
-                    .collect();
-                if !title.is_empty() {
-                    return Some(title);
+        // Only auto-update title if the user has not manually renamed the note
+        if !note.title_edited {
+            let base_title = content.lines().next().and_then(|first_line| {
+                let trimmed = first_line.trim();
+                if trimmed.starts_with('#') {
+                    let title: String = trimmed
+                        .trim_start_matches('#')
+                        .trim()
+                        .chars()
+                        .take(50)
+                        .collect();
+                    if !title.is_empty() {
+                        return Some(title);
+                    }
                 }
-            }
-            None
-        });
+                None
+            });
 
-        // Daily todo notes always get a date suffix title, e.g. "每日待办0625"
-        let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
-            || base_title.as_deref() == Some("每日待办");
-        if is_daily_todo {
-            note.title = format_daily_todo_title(&note.updated_at);
-        } else if let Some(title) = base_title {
-            // 仅当首行是 # 标题时才更新便签标题，否则保留旧标题（如手动重命名的标题）
-            note.title = title;
+            // Daily todo notes always get a date suffix title, e.g. "每日待办0625"
+            let is_daily_todo = daily_todo_id.as_ref() == note.template_id.as_ref()
+                || base_title.as_deref() == Some("每日待办");
+            if is_daily_todo {
+                note.title = format_daily_todo_title(&note.updated_at);
+            } else if let Some(title) = base_title {
+                note.title = title;
+            }
         }
     }
     write_index(&app, &notes);
@@ -331,6 +377,7 @@ fn rename_note(app: tauri::AppHandle, id: String, new_title: String) -> Result<(
     if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
         note.title = new_title.trim().chars().take(100).collect();
         note.updated_at = timestamp_now();
+        note.title_edited = true;
     }
     write_index(&app, &notes);
     Ok(())
@@ -431,6 +478,7 @@ fn create_note_from_template(
         created_at: now.clone(),
         updated_at: now,
         template_id: Some(template_id),
+        title_edited: false,
     };
 
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
