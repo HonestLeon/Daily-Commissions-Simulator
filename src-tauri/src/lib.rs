@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NoteMeta {
@@ -277,6 +278,50 @@ fn format_daily_todo_title(iso: &str) -> String {
     }
 }
 
+fn sanitize_filename(title: &str) -> String {
+    let sanitized: String = title
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c => c,
+        })
+        .collect();
+    let sanitized = sanitized.trim().replace(' ', "_");
+    if sanitized.is_empty() {
+        "note".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn load_note_internal(app: &tauri::AppHandle, id: &str) -> Result<String, String> {
+    let md_path = notes_dir(app).join(format!("{}.md", id));
+    fs::read_to_string(&md_path).map_err(|e| e.to_string())
+}
+
+fn create_note_with_content(
+    app: &tauri::AppHandle,
+    title: String,
+    content: String,
+) -> Result<NoteMeta, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = timestamp_now();
+    let note = NoteMeta {
+        id: id.clone(),
+        title: title.trim().chars().take(100).collect(),
+        created_at: now.clone(),
+        updated_at: now,
+        template_id: None,
+        title_edited: false,
+    };
+    let md_path = notes_dir(app).join(format!("{}.md", &id));
+    fs::write(&md_path, content).map_err(|e| e.to_string())?;
+    let mut notes = read_index(app);
+    notes.push(note.clone());
+    write_index(app, &notes);
+    Ok(note)
+}
+
 fn days_to_ymd(days: i64) -> (i64, i64, i64) {
     let era = (if days >= 0 { days } else { days - 146096 }) / 146097;
     let doe = days - era * 146097;
@@ -297,26 +342,7 @@ fn list_notes(app: tauri::AppHandle) -> Vec<NoteMeta> {
 
 #[tauri::command]
 fn create_note(app: tauri::AppHandle, title: String) -> Result<NoteMeta, String> {
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = timestamp_now();
-
-    let note = NoteMeta {
-        id: id.clone(),
-        title,
-        created_at: now.clone(),
-        updated_at: now,
-        template_id: None,
-        title_edited: false,
-    };
-
-    let md_path = notes_dir(&app).join(format!("{}.md", &id));
-    fs::write(&md_path, "").map_err(|e| e.to_string())?;
-
-    let mut notes = read_index(&app);
-    notes.push(note.clone());
-    write_index(&app, &notes);
-
-    Ok(note)
+    create_note_with_content(&app, title, String::new())
 }
 
 #[tauri::command]
@@ -385,8 +411,115 @@ fn rename_note(app: tauri::AppHandle, id: String, new_title: String) -> Result<(
 
 #[tauri::command]
 fn load_note(app: tauri::AppHandle, id: String) -> Result<String, String> {
-    let md_path = notes_dir(&app).join(format!("{}.md", &id));
-    fs::read_to_string(&md_path).map_err(|e| e.to_string())
+    load_note_internal(&app, &id)
+}
+
+// ── Markdown import / export commands ──
+
+#[tauri::command]
+async fn export_note(app: tauri::AppHandle, id: String) -> Result<Option<String>, String> {
+    let content = load_note_internal(&app, &id)?;
+    let notes = read_index(&app);
+    let note = notes
+        .iter()
+        .find(|n| n.id == id)
+        .ok_or_else(|| "便签不存在".to_string())?;
+
+    let default_name = format!("{}.md", sanitize_filename(&note.title));
+    let path = app
+        .dialog()
+        .file()
+        .add_filter("Markdown", &["md"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+
+    if let Some(p) = path {
+        let path = p.into_path().map_err(|e| e.to_string())?;
+        fs::write(&path, content).map_err(|e| e.to_string())?;
+        Ok(Some(path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn export_all_notes(app: tauri::AppHandle) -> Result<Option<(String, usize)>, String> {
+    let notes = read_index(&app);
+    if notes.is_empty() {
+        return Ok(None);
+    }
+
+    let folder = app
+        .dialog()
+        .file()
+        .set_title("导出所有便签到文件夹")
+        .blocking_pick_folder();
+
+    if let Some(dir) = folder {
+        let dir = dir.into_path().map_err(|e| e.to_string())?;
+        let mut count = 0;
+        for note in &notes {
+            let content = load_note_internal(&app, &note.id).unwrap_or_default();
+            let short_id = &note.id[..note.id.len().min(8)];
+            let filename = format!("{}_{}.md", sanitize_filename(&note.title), short_id);
+            let path = dir.join(&filename);
+            if fs::write(&path, content).is_ok() {
+                count += 1;
+            }
+        }
+        Ok(Some((dir.to_string_lossy().to_string(), count)))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn import_notes(app: tauri::AppHandle) -> Result<Option<usize>, String> {
+    let files = app
+        .dialog()
+        .file()
+        .add_filter("Markdown", &["md"])
+        .set_title("导入 Markdown 文件")
+        .blocking_pick_files();
+
+    if let Some(paths) = files {
+        let mut count = 0;
+        for p in paths {
+            let p = p.into_path().map_err(|e| e.to_string())?;
+            let content = fs::read_to_string(&p)
+                .map_err(|e| format!("读取 {} 失败: {}", p.display(), e))?;
+            let file_stem = p
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "导入便签".to_string());
+
+            let title = content
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .and_then(|line| {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('#') {
+                        Some(
+                            trimmed
+                                .trim_start_matches('#')
+                                .trim()
+                                .chars()
+                                .take(100)
+                                .collect(),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(file_stem);
+
+            create_note_with_content(&app, title, content)?;
+            count += 1;
+        }
+        Ok(Some(count))
+    } else {
+        Ok(None)
+    }
 }
 
 // ── Template commands ──
@@ -790,6 +923,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_notes,
             create_note,
@@ -808,6 +942,9 @@ pub fn run() {
             set_dark_mode,
             get_opacity,
             set_opacity,
+            export_note,
+            export_all_notes,
+            import_notes,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

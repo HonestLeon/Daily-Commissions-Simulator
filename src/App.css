@@ -342,6 +342,18 @@ body,
   border-color: rgba(0, 0, 0, 0.25);
 }
 
+.sidebar-status {
+  padding: 6px 8px;
+  margin: 0 8px;
+  font-size: 12px;
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* === Context Menu === */
 .context-overlay {
   position: fixed;
@@ -570,7 +582,8 @@ body,
   border-color: rgba(74, 158, 255, 0.3);
 }
 
-.template-option-blank {
+.template-option-blank,
+.template-option-import {
   border-style: dashed;
 }
 
@@ -911,6 +924,11 @@ body,
 
 [data-theme="dark"] .sidebar-create-btn:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .sidebar-status {
+  color: #81c784;
+  background: rgba(129, 199, 132, 0.15);
 }
 
 [data-theme="dark"] .editor-area {

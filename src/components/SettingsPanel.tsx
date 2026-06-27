@@ -16,6 +16,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
     fetchTemplates,
     setCloseBehavior,
     setDarkMode,
+    exportAllNotes,
   } = useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
 
@@ -41,6 +42,18 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
+  };
+
+  const handleExportAll = async () => {
+    try {
+      const result = await exportAllNotes();
+      if (result) {
+        window.alert(`已导出 ${result.count} 条便签到:\n${result.path}`);
+      }
+    } catch (e) {
+      window.alert("导出失败");
+      console.error(e);
+    }
   };
 
   if (!open) return null;
@@ -141,6 +154,16 @@ export default function SettingsPanel({ open, onClose }: Props) {
               暂无模板。右键便签可保存为模板。
             </div>
           )}
+
+          <hr className="settings-divider" />
+
+          <div className="settings-section-title">数据管理</div>
+          <button className="template-option" onClick={handleExportAll}>
+            <div className="template-option-title">📤 导出所有便签</div>
+            <div className="template-option-desc">
+              将所有便签以 Markdown 文件形式导出到指定文件夹
+            </div>
+          </button>
         </div>
       </div>
     </>

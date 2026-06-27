@@ -18,6 +18,7 @@ export default function Sidebar() {
     deleteNote,
     renameNote,
     saveAsTemplate,
+    exportNote,
   } = useNoteStore();
   const [collapsed, setCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +37,7 @@ export default function Sidebar() {
   } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [status, setStatus] = useState<string>("");
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const filteredNotes = searchQuery.trim()
@@ -108,6 +110,24 @@ export default function Sidebar() {
       await saveAsTemplate(name, content);
     } catch (e) {
       console.error("Failed to save as template:", e);
+    }
+    setContextMenu(null);
+  };
+
+  const showStatus = (message: string) => {
+    setStatus(message);
+    setTimeout(() => setStatus(""), 3000);
+  };
+
+  const handleExport = async (id: string) => {
+    try {
+      const path = await exportNote(id);
+      if (path) {
+        showStatus(`已导出: ${path}`);
+      }
+    } catch (e) {
+      showStatus("导出失败");
+      console.error(e);
     }
     setContextMenu(null);
   };
@@ -244,6 +264,11 @@ export default function Sidebar() {
               )}
             </div>
 
+            {status && (
+              <div className="sidebar-status" title={status}>
+                {status}
+              </div>
+            )}
             <div className="sidebar-footer">
               <button className="sidebar-create-btn" onClick={handleCreate}>
                 ＋ 新建便签
@@ -276,6 +301,9 @@ export default function Sidebar() {
             </button>
             <button onClick={() => handleSaveAsTemplate(contextMenu.id)}>
               保存为模板
+            </button>
+            <button onClick={() => handleExport(contextMenu.id)}>
+              导出 Markdown
             </button>
             <button onClick={() => handleDelete(contextMenu.id)}>
               删除便签

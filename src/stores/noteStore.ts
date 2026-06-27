@@ -28,6 +28,9 @@ interface NoteState {
   setTemplatePickerOpen: (open: boolean) => void;
   fetchCloseBehavior: () => Promise<void>;
   setCloseBehavior: (closeToTray: boolean) => Promise<void>;
+  exportNote: (id: string) => Promise<string | null>;
+  exportAllNotes: () => Promise<{ path: string; count: number } | null>;
+  importNotes: () => Promise<number | null>;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -183,6 +186,40 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       set({ closeToTray });
     } catch (e) {
       console.error("Failed to set close behavior:", e);
+    }
+  },
+
+  exportNote: async (id: string) => {
+    try {
+      const path: string | null = await invoke("export_note", { id });
+      return path;
+    } catch (e) {
+      console.error("Failed to export note:", e);
+      throw e;
+    }
+  },
+
+  exportAllNotes: async () => {
+    try {
+      const result: [string, number] | null = await invoke("export_all_notes");
+      if (!result) return null;
+      return { path: result[0], count: result[1] };
+    } catch (e) {
+      console.error("Failed to export all notes:", e);
+      throw e;
+    }
+  },
+
+  importNotes: async () => {
+    try {
+      const count: number | null = await invoke("import_notes");
+      if (count) {
+        await get().fetchNotes();
+      }
+      return count;
+    } catch (e) {
+      console.error("Failed to import notes:", e);
+      throw e;
     }
   },
 }));

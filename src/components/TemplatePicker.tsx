@@ -2,8 +2,13 @@ import { useState } from "react";
 import { useNoteStore } from "../stores/noteStore";
 
 export default function TemplatePicker() {
-  const { templates, templatePickerOpen, setTemplatePickerOpen, createNote } =
-    useNoteStore();
+  const {
+    templates,
+    templatePickerOpen,
+    setTemplatePickerOpen,
+    createNote,
+    importNotes,
+  } = useNoteStore();
   const [showPreset, setShowPreset] = useState(true);
   const [showCustom, setShowCustom] = useState(true);
 
@@ -11,6 +16,20 @@ export default function TemplatePicker() {
 
   const handlePick = (templateId?: string) => {
     createNote(templateId);
+  };
+
+  const handleImport = async () => {
+    try {
+      const count = await importNotes();
+      if (count) {
+        window.alert(`成功导入 ${count} 条便签`);
+      }
+    } catch (e) {
+      window.alert("导入失败");
+      console.error(e);
+    } finally {
+      setTemplatePickerOpen(false);
+    }
   };
 
   const presets = templates
@@ -45,6 +64,15 @@ export default function TemplatePicker() {
           >
             <div className="template-option-title">空白便签</div>
             <div className="template-option-desc">从零开始</div>
+          </button>
+
+          {/* Import option */}
+          <button
+            className="template-option template-option-import"
+            onClick={handleImport}
+          >
+            <div className="template-option-title">📥 导入 Markdown</div>
+            <div className="template-option-desc">从 .md 文件创建便签</div>
           </button>
 
           {/* Preset group */}
