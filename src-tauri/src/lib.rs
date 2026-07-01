@@ -624,6 +624,20 @@ fn create_note_from_template(
     Ok(note)
 }
 
+/// Reset a checkbox line to unchecked state, preserving the marker style (- or *)
+fn reset_checkbox(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let indent = &line[..line.len() - trimmed.len()];
+    let result = if let Some(pos) = trimmed.find("[x]").or_else(|| trimmed.find("[X]")) {
+        let mut s = trimmed.to_string();
+        s.replace_range(pos..pos + 3, "[ ]");
+        s
+    } else {
+        trimmed.to_string()
+    };
+    format!("{}{}", indent, result)
+}
+
 /// Find the most recent daily todo note and inherit unchecked items
 fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
     let notes = read_index(app);
@@ -677,19 +691,25 @@ fn inherit_daily_todo(app: &tauri::AppHandle, template: &str) -> String {
                         let t = l.trim_start();
                         t.starts_with("- [ ]") || t.starts_with("* [ ]")
                     };
-                    let items: Vec<&str> = if sec_name == "必做" {
+                    let raw_items: Vec<&str> = if sec_name == "必做" {
                         prev_sec.lines().filter(is_checkbox).collect()
                     } else {
                         prev_sec.lines().filter(is_unchecked).collect()
                     };
 
-                    eprintln!("[inherit] {} filtered items: {:?}", sec_name, items);
-                    if !items.is_empty() {
-                        for item in &items {
-                            result.push_str(item);
+                    eprintln!("[inherit] {} filtered items: {:?}", sec_name, raw_items);
+                    if !raw_items.is_empty() {
+                        for item in &raw_items {
+                            // For "必做", reset checkboxes to unchecked
+                            let line = if sec_name == "必做" {
+                                reset_checkbox(item)
+                            } else {
+                                item.to_string()
+                            };
+                            result.push_str(&line);
                             result.push('\n');
                         }
-                        eprintln!("[inherit] {} — inherited {} items", sec_name, items.len());
+                        eprintln!("[inherit] {} — inherited {} items", sec_name, raw_items.len());
                         inserted = true;
                     }
                 }
