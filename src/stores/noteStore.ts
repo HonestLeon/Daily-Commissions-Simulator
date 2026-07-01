@@ -47,9 +47,11 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     try {
       const notes: NoteMeta[] = await invoke("list_notes");
       set({ notes });
-      // Auto-select first note if none active
       if (notes.length > 0 && !get().activeId) {
-        set({ activeId: notes[0].id });
+        // Restore last active note, or fallback to first
+        const lastId = localStorage.getItem("last-active-note");
+        const restored = lastId && notes.some((n) => n.id === lastId);
+        set({ activeId: restored ? lastId : notes[0].id });
       }
     } catch (e) {
       console.error("Failed to fetch notes:", e);
@@ -102,7 +104,10 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  setActive: (id: string) => set({ activeId: id }),
+  setActive: (id: string) => {
+    localStorage.setItem("last-active-note", id);
+    set({ activeId: id });
+  },
 
   togglePin: () => set({ isPinned: !get().isPinned }),
 

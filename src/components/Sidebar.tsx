@@ -34,6 +34,7 @@ export default function Sidebar() {
     id: string;
     x: number;
     y: number;
+    above: boolean;
   } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -94,7 +95,9 @@ export default function Sidebar() {
 
   const handleRightClick = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
-    setContextMenu({ id, x: e.clientX, y: e.clientY });
+    const estimatedHeight = 140;
+    const above = e.clientY + estimatedHeight > window.innerHeight;
+    setContextMenu({ id, x: e.clientX, y: e.clientY, above });
   };
 
   const handleDelete = async (id: string) => {
@@ -287,7 +290,12 @@ export default function Sidebar() {
           />
           <div
             className="context-menu"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            style={{
+              left: contextMenu.x,
+              ...(contextMenu.above
+                ? { bottom: window.innerHeight - contextMenu.y }
+                : { top: contextMenu.y }),
+            }}
           >
             <button
               onClick={() =>
@@ -299,14 +307,14 @@ export default function Sidebar() {
             >
               重命名
             </button>
+            <button onClick={() => handleDelete(contextMenu.id)}>
+              删除便签
+            </button>
             <button onClick={() => handleSaveAsTemplate(contextMenu.id)}>
               保存为模板
             </button>
             <button onClick={() => handleExport(contextMenu.id)}>
               导出 Markdown
-            </button>
-            <button onClick={() => handleDelete(contextMenu.id)}>
-              删除便签
             </button>
           </div>
         </>

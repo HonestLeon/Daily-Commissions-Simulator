@@ -941,7 +941,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--hidden"]),
+            Some(vec![]),
         ))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -986,7 +986,6 @@ pub fn run() {
                 }
             });
 
-            if std::env::args().any(|a| a == "--hidden") {}
             Ok(())
         })
         .run(tauri::generate_context!())
