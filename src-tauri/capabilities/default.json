@@ -13,7 +13,6 @@
     "core:window:allow-minimize",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
-    "autostart:default",
     "window-state:default"
   ]
 }

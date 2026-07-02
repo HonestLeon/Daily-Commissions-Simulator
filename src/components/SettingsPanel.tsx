@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { invoke } from "@tauri-apps/api/core";
 import { useNoteStore } from "../stores/noteStore";
 
 interface Props {
@@ -22,7 +22,9 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      isEnabled().then(setAutoStart).catch(() => setAutoStart(false));
+      invoke<boolean>("is_autostart_enabled")
+        .then(setAutoStart)
+        .catch(() => setAutoStart(false));
       fetchTemplates();
     }
   }, [open]);
@@ -30,9 +32,9 @@ export default function SettingsPanel({ open, onClose }: Props) {
   const toggleAutoStart = async () => {
     try {
       if (autoStart) {
-        await disable();
+        await invoke("disable_autostart");
       } else {
-        await enable();
+        await invoke("enable_autostart");
       }
       setAutoStart(!autoStart);
     } catch (e) {

@@ -847,15 +847,76 @@ fn set_opacity(app: tauri::AppHandle, opacity: f32) {
     save_config(&app, &config);
 }
 
+// ── Autostart via Startup folder VBS ──
+
+fn startup_vbs_path() -> PathBuf {
+    let startup = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(r"Microsoft\Windows\Start Menu\Programs\Startup")
+        .join("lightweight-sticky-notes.vbs");
+    startup
+}
+
+fn is_autostart_enabled_internal() -> bool {
+    startup_vbs_path().exists()
+}
+
+fn toggle_autostart_internal() -> bool {
+    let path = startup_vbs_path();
+    if path.exists() {
+        let _ = fs::remove_file(&path);
+        false
+    } else {
+        if let Ok(exe) = std::env::current_exe() {
+            let exe_str = exe.to_string_lossy().replace('\'', "''");
+            let vbs = format!(
+                "CreateObject(\"WScript.Shell\").Run \"\"{}\"\", 0, False\n",
+                exe_str
+            );
+            let _ = fs::write(&path, vbs);
+        }
+        true
+    }
+}
+
+#[tauri::command]
+fn enable_autostart() -> Result<bool, String> {
+    let path = startup_vbs_path();
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_str = exe.to_string_lossy().replace('\'', "''");
+        let vbs = format!(
+            "CreateObject(\"WScript.Shell\").Run \"\"{}\"\", 0, False\n",
+            exe_str
+        );
+        fs::write(&path, vbs).map_err(|e| e.to_string())?;
+        Ok(path.exists())
+    } else {
+        Err("无法获取当前程序路径".into())
+    }
+}
+
+#[tauri::command]
+fn disable_autostart() -> Result<bool, String> {
+    let path = startup_vbs_path();
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(path.exists())
+}
+
+#[tauri::command]
+fn is_autostart_enabled() -> bool {
+    startup_vbs_path().exists()
+}
+
 fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    use tauri_plugin_autostart::ManagerExt;
 
     let icon = app.default_window_icon().unwrap().clone();
 
-    // 读取当前自启状态以设置初始菜单文本
-    let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart_enabled = is_autostart_enabled_internal();
     let autostart_label = if autostart_enabled {
         "开机自启：开"
     } else {
@@ -894,18 +955,7 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
                     }
                 }
                 "autostart" => {
-                    // 切换开机自启状态并更新菜单文本
-                    let autolaunch = app.autolaunch();
-                    let new_state = match autolaunch.is_enabled() {
-                        Ok(true) => {
-                            let _ = autolaunch.disable();
-                            false
-                        }
-                        _ => {
-                            let _ = autolaunch.enable();
-                            true
-                        }
-                    };
+                    let new_state = toggle_autostart_internal();
                     let label = if new_state {
                         "开机自启：开"
                     } else {
@@ -939,10 +989,6 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
-        ))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_notes,
@@ -958,6 +1004,9 @@ pub fn run() {
             create_note_from_template,
             get_close_behavior,
             set_close_behavior,
+            enable_autostart,
+            disable_autostart,
+            is_autostart_enabled,
             get_dark_mode,
             set_dark_mode,
             get_opacity,
