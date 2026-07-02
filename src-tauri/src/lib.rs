@@ -881,7 +881,22 @@ fn toggle_autostart_internal() -> bool {
 }
 
 #[tauri::command]
+/// Clean up old registry-based autostart from tauri-plugin-autostart
+fn cleanup_old_autostart() {
+    use std::process::Command;
+    let _ = Command::new("reg")
+        .args([
+            "delete",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v", "lightweight-sticky-notes",
+            "/f",
+        ])
+        .output();
+}
+
+#[tauri::command]
 fn enable_autostart() -> Result<bool, String> {
+    cleanup_old_autostart();
     let path = startup_vbs_path();
     if let Ok(exe) = std::env::current_exe() {
         let exe_str = exe.to_string_lossy().replace('\'', "''");
@@ -1017,6 +1032,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
+            cleanup_old_autostart();
             ensure_preset_templates(&app_handle);
             migrate_note_template_ids(&app_handle);
 
