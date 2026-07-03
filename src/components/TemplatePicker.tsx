@@ -57,24 +57,6 @@ export default function TemplatePicker() {
           </button>
         </div>
         <div className="dialog-body">
-          {/* Blank option */}
-          <button
-            className="template-option template-option-blank"
-            onClick={() => handlePick(undefined)}
-          >
-            <div className="template-option-title">空白便签</div>
-            <div className="template-option-desc">从零开始</div>
-          </button>
-
-          {/* Import option */}
-          <button
-            className="template-option template-option-import"
-            onClick={handleImport}
-          >
-            <div className="template-option-title">📥 导入 Markdown</div>
-            <div className="template-option-desc">从 .md 文件创建便签</div>
-          </button>
-
           {/* Preset group */}
           {presets.length > 0 && (
             <div className="template-group">
@@ -135,6 +117,24 @@ export default function TemplatePicker() {
                   ))}
                 </div>
               )}
+
+          {/* Blank option */}
+          <button
+            className="template-option template-option-blank"
+            onClick={() => handlePick(undefined)}
+          >
+            <div className="template-option-title">空白便签</div>
+            <div className="template-option-desc">从零开始</div>
+          </button>
+
+          {/* Import option */}
+          <button
+            className="template-option template-option-import"
+            onClick={handleImport}
+          >
+            <div className="template-option-title">📥 导入 Markdown</div>
+            <div className="template-option-desc">从 .md 文件创建便签</div>
+          </button>
             </div>
           )}
         </div>

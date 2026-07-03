@@ -22,7 +22,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      invoke<boolean>("is_autostart_enabled")
+      invoke<boolean>("is_autostart_enabled_cmd")
         .then(setAutoStart)
         .catch(() => setAutoStart(false));
       fetchTemplates();
@@ -32,9 +32,9 @@ export default function SettingsPanel({ open, onClose }: Props) {
   const toggleAutoStart = async () => {
     try {
       if (autoStart) {
-        await invoke("disable_autostart");
+        await invoke("disable_autostart_cmd");
       } else {
-        await invoke("enable_autostart");
+        await invoke("enable_autostart_cmd");
       }
       setAutoStart(!autoStart);
     } catch (e) {

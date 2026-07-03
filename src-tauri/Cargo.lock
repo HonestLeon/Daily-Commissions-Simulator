@@ -1658,6 +1658,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-window-state",
  "uuid",
+ "winreg",
 ]
 
 [[package]]

@@ -847,82 +847,115 @@ fn set_opacity(app: tauri::AppHandle, opacity: f32) {
     save_config(&app, &config);
 }
 
-// ── Autostart via Startup folder VBS ──
+// ── Autostart via registry (reliable, no VBS) ──
 
-fn startup_vbs_path() -> PathBuf {
-    let startup = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(r"Microsoft\Windows\Start Menu\Programs\Startup")
-        .join("lightweight-sticky-notes.vbs");
-    startup
+fn autostart_reg_key() -> &'static str {
+    r"Software\Microsoft\Windows\CurrentVersion\Run"
+}
+
+fn autostart_reg_value() -> &'static str {
+    "lightweight-sticky-notes"
 }
 
 fn is_autostart_enabled_internal() -> bool {
-    startup_vbs_path().exists()
-}
-
-fn toggle_autostart_internal() -> bool {
-    let path = startup_vbs_path();
-    if path.exists() {
-        let _ = fs::remove_file(&path);
-        false
-    } else {
-        if let Ok(exe) = std::env::current_exe() {
-            let exe_str = exe.to_string_lossy().replace('\'', "''");
-            let vbs = format!(
-                "CreateObject(\"WScript.Shell\").Run \"\"{}\"\", 0, False\n",
-                exe_str
-            );
-            let _ = fs::write(&path, vbs);
+    #[cfg(windows)]
+    {
+        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey(autostart_reg_key()) {
+            key.get_value::<String, _>(autostart_reg_value()).is_ok()
+        } else {
+            false
         }
-        true
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+fn toggle_autostart_internal(exe_path: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey_with_flags(autostart_reg_key(), KEY_SET_VALUE) {
+            if is_autostart_enabled_internal() {
+                let _ = key.delete_value(autostart_reg_value());
+                false
+            } else {
+                let _ = key.set_value(autostart_reg_value(), &exe_path);
+                true
+            }
+        } else {
+            false
+        }
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+#[tauri::command]
+fn get_autostart() -> bool {
+    is_autostart_enabled_internal()
+}
+
+#[tauri::command]
+fn toggle_autostart(_app: tauri::AppHandle) -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_path = exe.to_string_lossy().to_string();
+    Ok(toggle_autostart_internal(&exe_path))
+}
+
+/// Clean up old VBS and registry entries from previous autostart approaches
+fn cleanup_old_autostart(_app: &tauri::AppHandle) {
+    // Remove old VBS file from Startup folder
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let vbs_path = PathBuf::from(appdata)
+            .join(r"Microsoft\Windows\Start Menu\Programs\Startup")
+            .join("lightweight-sticky-notes.vbs");
+        if vbs_path.exists() {
+            let _ = fs::remove_file(&vbs_path);
+        }
+    }
+
+    // Remove old registry entry from tauri-plugin-autostart (different value name format)
+    #[cfg(windows)]
+    {
+        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey_with_flags(autostart_reg_key(), winreg::enums::KEY_SET_VALUE) {
+            // Try deleting old tauri-plugin-autostart entries
+            let _ = key.delete_value("load-autostart");
+            let _ = key.delete_value("lightweight-sticky-notes");
+        }
     }
 }
 
 #[tauri::command]
-/// Clean up old registry-based autostart from tauri-plugin-autostart
-fn cleanup_old_autostart() {
-    use std::process::Command;
-    let _ = Command::new("reg")
-        .args([
-            "delete",
-            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
-            "/v", "lightweight-sticky-notes",
-            "/f",
-        ])
-        .output();
+fn cleanup_old_autostart_cmd(app: tauri::AppHandle) {
+    cleanup_old_autostart(&app);
 }
 
 #[tauri::command]
-fn enable_autostart() -> Result<bool, String> {
-    cleanup_old_autostart();
-    let path = startup_vbs_path();
-    if let Ok(exe) = std::env::current_exe() {
-        let exe_str = exe.to_string_lossy().replace('\'', "''");
-        let vbs = format!(
-            "CreateObject(\"WScript.Shell\").Run \"\"{}\"\", 0, False\n",
-            exe_str
-        );
-        fs::write(&path, vbs).map_err(|e| e.to_string())?;
-        Ok(path.exists())
-    } else {
-        Err("无法获取当前程序路径".into())
+fn enable_autostart_cmd() -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_path = exe.to_string_lossy().to_string();
+    Ok(toggle_autostart_internal(&exe_path))
+}
+
+#[tauri::command]
+fn disable_autostart_cmd() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey_with_flags(autostart_reg_key(), KEY_SET_VALUE) {
+            let _ = key.delete_value(autostart_reg_value());
+        }
     }
+    Ok(false)
 }
 
 #[tauri::command]
-fn disable_autostart() -> Result<bool, String> {
-    let path = startup_vbs_path();
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(path.exists())
-}
-
-#[tauri::command]
-fn is_autostart_enabled() -> bool {
-    startup_vbs_path().exists()
+fn is_autostart_enabled_cmd() -> bool {
+    is_autostart_enabled_internal()
 }
 
 fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
@@ -970,7 +1003,10 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
                     }
                 }
                 "autostart" => {
-                    let new_state = toggle_autostart_internal();
+                    let exe_path = std::env::current_exe()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let new_state = toggle_autostart_internal(&exe_path);
                     let label = if new_state {
                         "开机自启：开"
                     } else {
@@ -1019,9 +1055,10 @@ pub fn run() {
             create_note_from_template,
             get_close_behavior,
             set_close_behavior,
-            enable_autostart,
-            disable_autostart,
-            is_autostart_enabled,
+            enable_autostart_cmd,
+            disable_autostart_cmd,
+            is_autostart_enabled_cmd,
+            cleanup_old_autostart_cmd,
             get_dark_mode,
             set_dark_mode,
             get_opacity,
@@ -1032,7 +1069,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
-            cleanup_old_autostart();
+            cleanup_old_autostart(&app_handle);
             ensure_preset_templates(&app_handle);
             migrate_note_template_ids(&app_handle);
 
