@@ -854,7 +854,15 @@ fn autostart_reg_key() -> &'static str {
 }
 
 fn autostart_reg_value() -> &'static str {
-    "lightweight-sticky-notes"
+    // NOTE: must NOT be "lightweight-sticky-notes" — that legacy name is
+    // deleted by cleanup_old_autostart(), which would remove our own entry.
+    "LightweightStickyNotes"
+}
+
+/// Registry data format: `"C:\path\app.exe" --startup`
+/// Quotes protect paths with spaces; --startup triggers silent tray launch.
+fn autostart_reg_value_data(exe_path: &str) -> String {
+    format!("\"{}\" --startup", exe_path)
 }
 
 fn is_autostart_enabled_internal() -> bool {
@@ -871,25 +879,59 @@ fn is_autostart_enabled_internal() -> bool {
     false
 }
 
-fn toggle_autostart_internal(exe_path: &str) -> bool {
+fn enable_autostart_in_registry(exe_path: &str) -> Result<bool, String> {
+    #[cfg(debug_assertions)]
+    {
+        // Debug builds spawn a console window and depend on the Vite dev server;
+        // registering one would cause the white window + terminal at boot.
+        let _ = exe_path;
+        Err("开发模式不支持开机自启，请使用发布版本开启".to_string())
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        #[cfg(windows)]
+        {
+            use winreg::enums::*;
+            let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+            let key = hkcu
+                .open_subkey_with_flags(autostart_reg_key(), KEY_SET_VALUE)
+                .map_err(|e| e.to_string())?;
+            key.set_value(
+                autostart_reg_value(),
+                &autostart_reg_value_data(exe_path),
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+
+        #[cfg(not(windows))]
+        {
+            let _ = exe_path;
+            Ok(false)
+        }
+    }
+}
+
+fn disable_autostart_in_registry() {
     #[cfg(windows)]
     {
         use winreg::enums::*;
         let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
         if let Ok(key) = hkcu.open_subkey_with_flags(autostart_reg_key(), KEY_SET_VALUE) {
-            if is_autostart_enabled_internal() {
-                let _ = key.delete_value(autostart_reg_value());
-                false
-            } else {
-                let _ = key.set_value(autostart_reg_value(), &exe_path);
-                true
-            }
-        } else {
-            false
+            let _ = key.delete_value(autostart_reg_value());
         }
     }
-    #[cfg(not(windows))]
-    false
+}
+
+fn toggle_autostart_internal() -> Result<bool, String> {
+    if is_autostart_enabled_internal() {
+        disable_autostart_in_registry();
+        Ok(false)
+    } else {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        enable_autostart_in_registry(&exe.to_string_lossy())
+    }
 }
 
 #[tauri::command]
@@ -899,9 +941,33 @@ fn get_autostart() -> bool {
 
 #[tauri::command]
 fn toggle_autostart(_app: tauri::AppHandle) -> Result<bool, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let exe_path = exe.to_string_lossy().to_string();
-    Ok(toggle_autostart_internal(&exe_path))
+    toggle_autostart_internal()
+}
+
+/// One-time migration: move the autostart entry from the legacy value name
+/// ("lightweight-sticky-notes", no quotes / no --startup flag) to the current
+/// one. Must run BEFORE cleanup_old_autostart, which deletes the legacy name.
+fn migrate_autostart_entry() {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(key) =
+            hkcu.open_subkey_with_flags(autostart_reg_key(), KEY_QUERY_VALUE | KEY_SET_VALUE)
+        {
+            if let Ok(old) = key.get_value::<String, _>("lightweight-sticky-notes") {
+                // Old value is a bare exe path; re-register properly and drop the legacy name.
+                let exe_path = old.trim().trim_matches('"').to_string();
+                if !exe_path.is_empty() && std::path::Path::new(&exe_path).exists() {
+                    let _ = key.set_value(
+                        autostart_reg_value(),
+                        &autostart_reg_value_data(&exe_path),
+                    );
+                }
+                let _ = key.delete_value("lightweight-sticky-notes");
+            }
+        }
+    }
 }
 
 /// Clean up old VBS and registry entries from previous autostart approaches
@@ -936,20 +1002,12 @@ fn cleanup_old_autostart_cmd(app: tauri::AppHandle) {
 #[tauri::command]
 fn enable_autostart_cmd() -> Result<bool, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let exe_path = exe.to_string_lossy().to_string();
-    Ok(toggle_autostart_internal(&exe_path))
+    enable_autostart_in_registry(&exe.to_string_lossy())
 }
 
 #[tauri::command]
 fn disable_autostart_cmd() -> Result<bool, String> {
-    #[cfg(windows)]
-    {
-        use winreg::enums::*;
-        let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
-        if let Ok(key) = hkcu.open_subkey_with_flags(autostart_reg_key(), KEY_SET_VALUE) {
-            let _ = key.delete_value(autostart_reg_value());
-        }
-    }
+    disable_autostart_in_registry();
     Ok(false)
 }
 
@@ -1003,10 +1061,9 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
                     }
                 }
                 "autostart" => {
-                    let exe_path = std::env::current_exe()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let new_state = toggle_autostart_internal(&exe_path);
+                    // On failure (e.g. debug build), keep the label in sync with reality.
+                    let new_state =
+                        toggle_autostart_internal().unwrap_or_else(|_| is_autostart_enabled_internal());
                     let label = if new_state {
                         "开机自启：开"
                     } else {
@@ -1037,9 +1094,54 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
     Ok(tray)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_value_data_has_quotes_and_startup_flag() {
+        let data = autostart_reg_value_data(r"C:\Program Files\轻量便签\app.exe");
+        assert_eq!(data, r#""C:\Program Files\轻量便签\app.exe" --startup"#);
+    }
+
+    #[test]
+    fn value_name_is_not_legacy_name_deleted_by_cleanup() {
+        assert_ne!(autostart_reg_value(), "lightweight-sticky-notes");
+        assert_eq!(autostart_reg_value(), "LightweightStickyNotes");
+    }
+
+    /// Simulates the migration parsing: legacy bare path -> quoted + flag.
+    #[test]
+    fn migration_parses_legacy_bare_path() {
+        let legacy = r"C:\Users\liu\AppData\Local\Programs\LightweightStickyNotes\轻量便签.exe";
+        let exe_path = legacy.trim().trim_matches('"').to_string();
+        assert_eq!(
+            autostart_reg_value_data(&exe_path),
+            format!("\"{}\" --startup", legacy)
+        );
+    }
+
+    #[test]
+    fn startup_flag_detection() {
+        let args = vec!["app.exe".to_string(), "--startup".to_string()];
+        assert!(args.iter().any(|a| a == "--startup"));
+        let args2 = vec!["app.exe".to_string()];
+        assert!(!args2.iter().any(|a| a == "--startup"));
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Don't let the plugin restore visibility: the window starts hidden
+                // and is shown manually (unless launched with --startup for silent boot).
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_notes,
@@ -1069,6 +1171,8 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
+            // Migration must run before cleanup, which deletes the legacy value name.
+            migrate_autostart_entry();
             cleanup_old_autostart(&app_handle);
             ensure_preset_templates(&app_handle);
             migrate_note_template_ids(&app_handle);
@@ -1077,6 +1181,14 @@ pub fn run() {
 
             let window = app.get_webview_window("main").unwrap();
             let w_clone = window.clone();
+
+            // The window is created hidden (tauri.conf.json: visible=false) to avoid a
+            // white flash. Show it on normal launches; with --startup (autostart entry)
+            // stay hidden in the tray. Position/size are still restored by the plugin.
+            if !std::env::args().any(|a| a == "--startup") {
+                let _ = window.show();
+            }
+
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     let config = load_config(&app_handle);
