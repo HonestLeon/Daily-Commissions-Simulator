@@ -31,3 +31,6 @@ src-tauri/gen/
 *.exe
 *.msi
 !src-tauri/icons/*.exe
+
+# Tool memory (WorkBuddy)
+.workbuddy/

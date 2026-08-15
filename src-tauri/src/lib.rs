@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use chrono::Local;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -242,21 +243,7 @@ fn is_auto_title(app: &tauri::AppHandle, note: &NoteMeta) -> bool {
 }
 
 fn timestamp_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let days = (secs / 86400) as i64;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let mins = (time_secs % 3600) / 60;
-    let secs_rem = time_secs % 60;
-
-    let (y, m, d) = days_to_ymd(days + 719468);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        y, m, d, hours, mins, secs_rem
-    )
+    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
 }
 
 fn daily_todo_template_id(app: &tauri::AppHandle) -> Option<String> {
@@ -320,19 +307,6 @@ fn create_note_with_content(
     notes.push(note.clone());
     write_index(app, &notes);
     Ok(note)
-}
-
-fn days_to_ymd(days: i64) -> (i64, i64, i64) {
-    let era = (if days >= 0 { days } else { days - 146096 }) / 146097;
-    let doe = days - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 #[tauri::command]

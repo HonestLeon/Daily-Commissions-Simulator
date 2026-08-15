@@ -33,11 +33,13 @@ export default function SettingsPanel({ open, onClose }: Props) {
     try {
       if (autoStart) {
         await invoke("disable_autostart_cmd");
+        setAutoStart(false);
       } else {
         await invoke("enable_autostart_cmd");
+        setAutoStart(true);
       }
-      setAutoStart(!autoStart);
     } catch (e) {
+      window.alert(typeof e === "string" ? e : "切换开机自启失败");
       console.error("Failed to toggle autostart:", e);
     }
   };
