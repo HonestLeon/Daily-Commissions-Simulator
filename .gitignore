@@ -27,10 +27,11 @@ npm-debug.log*
 # Tauri
 src-tauri/gen/
 
-# Installers
+# Installers (green/portable exe stays ignored; only release installers are tracked)
 *.exe
 *.msi
 !src-tauri/icons/*.exe
+!releases/*.exe
 
 # Tool memory (WorkBuddy)
 .workbuddy/

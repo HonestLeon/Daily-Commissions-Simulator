@@ -5,9 +5,10 @@ import FirstCloseDialog from "./FirstCloseDialog";
 
 interface Props {
   onSettings: () => void;
+  onCheckUpdate: () => void;
 }
 
-export default function TitleBar({ onSettings }: Props) {
+export default function TitleBar({ onSettings, onCheckUpdate }: Props) {
   const { isPinned, opacity, closeToTray, setCloseBehavior, togglePin, setOpacity } =
     useNoteStore();
   const [showCloseDialog, setShowCloseDialog] = useState(false);
@@ -74,6 +75,10 @@ export default function TitleBar({ onSettings }: Props) {
             title={isPinned ? "取消置顶" : "窗口置顶"}
           >
             📌
+          </button>
+
+          <button className="titlebar-btn" onClick={onCheckUpdate} title="检查更新">
+            🔄
           </button>
 
           <div className="titlebar-slider" title={`透明度: ${Math.round(opacity * 100)}%`}>

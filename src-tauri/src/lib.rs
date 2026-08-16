@@ -821,6 +821,140 @@ fn set_opacity(app: tauri::AppHandle, opacity: f32) {
     save_config(&app, &config);
 }
 
+// ── Update check ──
+
+const GITEE_OWNER: &str = "Honest_Leon";
+const GITEE_REPO: &str = "lightweight-sticky-notes";
+
+#[derive(Debug, Serialize, Clone)]
+struct UpdateInfo {
+    current_version: String,
+    latest_version: String,
+    has_update: bool,
+    download_url: String,
+}
+
+/// URL-encode a path segment so non-ASCII (e.g. 轻量便签) survives in a URL.
+fn percent_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{:02X}", b)
+            }
+        })
+        .collect()
+}
+
+/// Semver-ish comparison: returns true if `a > b`.
+fn version_gt(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.trim()
+            .trim_start_matches('v')
+            .split('.')
+            .map(|p| p.parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let va = parse(a);
+    let vb = parse(b);
+    let n = va.len().max(vb.len());
+    for i in 0..n {
+        let x = va.get(i).copied().unwrap_or(0);
+        let y = vb.get(i).copied().unwrap_or(0);
+        if x != y {
+            return x > y;
+        }
+    }
+    false
+}
+
+#[tauri::command]
+fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    let current = app.package_info().version.to_string();
+    let url = format!(
+        "https://gitee.com/{}/{}/raw/master/src-tauri/tauri.conf.json",
+        GITEE_OWNER, GITEE_REPO
+    );
+
+    let body = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(15))
+        .call()
+        .map_err(|e| format!("检查更新失败：无法连接 gitee（{}）", e))?
+        .into_string()
+        .map_err(|e| format!("读取响应失败：{}", e))?;
+
+    let conf: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("解析远程版本失败：{}", e))?;
+    let latest = conf
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&current)
+        .to_string();
+
+    let has_update = version_gt(&latest, &current);
+    let filename = format!("轻量便签_{}_x64-setup.exe", latest);
+    let download_url = format!(
+        "https://gitee.com/{}/{}/raw/master/releases/{}",
+        GITEE_OWNER,
+        GITEE_REPO,
+        percent_encode(&filename)
+    );
+
+    Ok(UpdateInfo {
+        current_version: current,
+        latest_version: latest,
+        has_update,
+        download_url,
+    })
+}
+
+#[tauri::command]
+fn download_and_install(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let tmp = std::env::temp_dir().join("lwsn-update");
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let installer = tmp.join("setup.exe");
+
+    // Download the installer.
+    let resp = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(600))
+        .call()
+        .map_err(|e| format!("下载失败：{}", e))?;
+    let mut reader = resp.into_reader();
+    let mut file = std::fs::File::create(&installer).map_err(|e| e.to_string())?;
+    std::io::copy(&mut reader, &mut file).map_err(|e| format!("保存安装包失败：{}", e))?;
+
+    // Silent install (NSIS /S). Installs to the default location.
+    let status = std::process::Command::new(&installer)
+        .arg("/S")
+        .status()
+        .map_err(|e| format!("启动安装器失败：{}", e))?;
+    if !status.success() {
+        return Err("安装未成功，请前往 gitee 手动下载安装".to_string());
+    }
+
+    // Try to relaunch the newly installed version, then exit the current one.
+    let exe_name = "lightweight-sticky-notes.exe";
+    let candidates: Vec<PathBuf> = std::env::var("LOCALAPPDATA")
+        .map(|base| {
+            let base = PathBuf::from(base);
+            vec![
+                base.join("轻量便签").join(exe_name),
+                base.join("Programs").join("LightweightStickyNotes").join(exe_name),
+                base.join("LightweightStickyNotes").join(exe_name),
+            ]
+        })
+        .unwrap_or_default();
+
+    if let Some(new_exe) = candidates.iter().find(|p| p.exists()) {
+        std::process::Command::new(new_exe).spawn().ok();
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        app.exit(0);
+    }
+
+    Ok(())
+}
+
 // ── Autostart via registry (reliable, no VBS) ──
 
 fn autostart_reg_key() -> &'static str {
@@ -1102,6 +1236,23 @@ mod tests {
         let args2 = vec!["app.exe".to_string()];
         assert!(!args2.iter().any(|a| a == "--startup"));
     }
+
+    #[test]
+    fn version_comparison() {
+        assert!(version_gt("0.1.2", "0.1.1"));
+        assert!(version_gt("0.2.0", "0.1.9"));
+        assert!(version_gt("0.1.10", "0.1.9"));
+        assert!(version_gt("1.0.0", "0.9.9"));
+        assert!(!version_gt("0.1.1", "0.1.1"));
+        assert!(!version_gt("0.1.0", "0.1.1"));
+        assert!(!version_gt("0.0.9", "0.1.0"));
+    }
+
+    #[test]
+    fn percent_encoding_keeps_ascii_and_encodes_unicode() {
+        assert_eq!(percent_encode("setup_0.1.1.exe"), "setup_0.1.1.exe");
+        assert!(percent_encode("轻量便签").contains('%'));
+    }
 }
 
 pub fn run() {
@@ -1142,6 +1293,8 @@ pub fn run() {
             export_note,
             export_all_notes,
             import_notes,
+            check_update,
+            download_and_install,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

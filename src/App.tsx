@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import Sidebar from "./components/Sidebar";
 import NoteEditor from "./components/NoteEditor";
 import SettingsPanel from "./components/SettingsPanel";
 import TemplatePicker from "./components/TemplatePicker";
+import UpdateDialog, { type UpdateState } from "./components/UpdateDialog";
 import { useNoteStore } from "./stores/noteStore";
+import type { UpdateInfo } from "./types";
 
 function App() {
   const {
@@ -20,6 +23,35 @@ function App() {
   } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+
+  const handleCheckUpdate = async () => {
+    setUpdateState({ phase: "checking" });
+    try {
+      const info = await invoke<UpdateInfo>("check_update");
+      setUpdateState({ phase: "result", info });
+    } catch (e) {
+      setUpdateState({
+        phase: "error",
+        message: typeof e === "string" ? e : "检查更新失败",
+      });
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (updateState?.phase !== "result") return;
+    const url = updateState.info.download_url;
+    setUpdateState({ phase: "installing" });
+    try {
+      await invoke("download_and_install", { url });
+      setUpdateState({ phase: "done" });
+    } catch (e) {
+      setUpdateState({
+        phase: "error",
+        message: typeof e === "string" ? e : "更新失败",
+      });
+    }
+  };
 
   useEffect(() => {
     if (initialized.current) return;
@@ -110,7 +142,10 @@ function App() {
 
   return (
     <div className="app" style={{ "--app-bg-opacity": opacity } as React.CSSProperties}>
-      <TitleBar onSettings={() => setSettingsOpen(true)} />
+      <TitleBar
+        onSettings={() => setSettingsOpen(true)}
+        onCheckUpdate={handleCheckUpdate}
+      />
       <div className="app-body">
         <Sidebar />
         <main className="editor-area">
@@ -118,6 +153,11 @@ function App() {
         </main>
       </div>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <UpdateDialog
+        state={updateState}
+        onClose={() => setUpdateState(null)}
+        onUpdate={handleUpdate}
+      />
       <TemplatePicker />
     </div>
   );
