@@ -17,6 +17,10 @@ function InnerEditor({
   const editorRef = useRef<Crepe | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Ignore the first markdownUpdated: it fires once on editor init when the
+  // loaded defaultValue is parsed — not a user edit. Without this, opening a
+  // note triggers a no-op save that bumps updated_at / retitles daily todos.
+  const isFirstUpdate = useRef(true);
 
   useEditor((root) => {
     const crepe = new Crepe({
@@ -27,6 +31,10 @@ function InnerEditor({
     // Listen for changes
     crepe.on((listener) => {
       listener.markdownUpdated((_, md) => {
+        if (isFirstUpdate.current) {
+          isFirstUpdate.current = false;
+          return;
+        }
         onChangeRef.current(md);
       });
     });

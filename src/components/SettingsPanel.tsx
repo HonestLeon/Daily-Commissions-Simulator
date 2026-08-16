@@ -8,16 +8,7 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const {
-    templates,
-    closeToTray,
-    darkMode,
-    deleteTemplate,
-    fetchTemplates,
-    setCloseBehavior,
-    setDarkMode,
-    exportAllNotes,
-  } = useNoteStore();
+  const { closeToTray, darkMode, setCloseBehavior, setDarkMode } = useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
 
   useEffect(() => {
@@ -25,7 +16,6 @@ export default function SettingsPanel({ open, onClose }: Props) {
       invoke<boolean>("is_autostart_enabled_cmd")
         .then(setAutoStart)
         .catch(() => setAutoStart(false));
-      fetchTemplates();
     }
   }, [open]);
 
@@ -48,22 +38,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
     setDarkMode(!darkMode);
   };
 
-  const handleExportAll = async () => {
-    try {
-      const result = await exportAllNotes();
-      if (result) {
-        window.alert(`已导出 ${result.count} 条便签到:\n${result.path}`);
-      }
-    } catch (e) {
-      window.alert("导出失败");
-      console.error(e);
-    }
-  };
-
   if (!open) return null;
-
-  const customTemplates = templates.filter((t) => !t.preset);
-  const presetTemplates = templates.filter((t) => t.preset);
 
   return (
     <>
@@ -118,56 +93,6 @@ export default function SettingsPanel({ open, onClose }: Props) {
               <div className="settings-toggle-knob" />
             </div>
           </label>
-
-          <hr className="settings-divider" />
-
-          {/* Template management */}
-          <div className="settings-section-title">模板管理</div>
-
-          {presetTemplates.length > 0 && (
-            <div className="settings-template-group">
-              <div className="settings-template-group-label">预设模板</div>
-              {presetTemplates.map((t) => (
-                <div key={t.id} className="settings-template-item">
-                  <span>📋 {t.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {customTemplates.length > 0 && (
-            <div className="settings-template-group">
-              <div className="settings-template-group-label">自定义模板</div>
-              {customTemplates.map((t) => (
-                <div key={t.id} className="settings-template-item">
-                  <span>📝 {t.name}</span>
-                  <button
-                    className="settings-template-delete"
-                    onClick={() => deleteTemplate(t.id)}
-                    title="删除模板"
-                  >
-                    🗑
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {templates.length === 0 && (
-            <div className="settings-label-desc" style={{ padding: "8px 0" }}>
-              暂无模板。右键便签可保存为模板。
-            </div>
-          )}
-
-          <hr className="settings-divider" />
-
-          <div className="settings-section-title">数据管理</div>
-          <button className="template-option" onClick={handleExportAll}>
-            <div className="template-option-title">📤 导出所有便签</div>
-            <div className="template-option-desc">
-              将所有便签以 Markdown 文件形式导出到指定文件夹
-            </div>
-          </button>
         </div>
       </div>
     </>

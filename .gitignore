@@ -35,3 +35,7 @@ src-tauri/gen/
 
 # Tool memory (WorkBuddy)
 .workbuddy/
+
+# Source images (icon sources, not tracked)
+/图标.png
+/原石原图.png

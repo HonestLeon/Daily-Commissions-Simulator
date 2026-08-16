@@ -1,29 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import Sidebar from "./components/Sidebar";
 import NoteEditor from "./components/NoteEditor";
 import SettingsPanel from "./components/SettingsPanel";
-import TemplatePicker from "./components/TemplatePicker";
 import UpdateDialog, { type UpdateState } from "./components/UpdateDialog";
+import LixingDialog from "./components/LixingDialog";
 import { useNoteStore } from "./stores/noteStore";
-import type { UpdateInfo } from "./types";
+import type { UpdateInfo, WeeklyResult } from "./types";
 
 function App() {
   const {
     fetchNotes,
-    fetchTemplates,
     fetchCloseBehavior,
     fetchDarkMode,
     fetchOpacity,
-    createNote,
+    initDaily,
+    getBalance,
+    checkWeekly,
     opacity,
   } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+  const [weeklyResult, setWeeklyResult] = useState<WeeklyResult | null>(null);
+  const [settleToast, setSettleToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
+    const boot = async () => {
+      // 1) Settle previous commission + auto-create today's.
+      const daily = await initDaily();
+      if (daily && daily.settle_reward > 0) {
+        setSettleToast(
+          `前日委托已结算：+${daily.settle_reward} 原石${
+            daily.settle_triple ? "（三全完成）" : ""
+          }`
+        );
+        setTimeout(() => setSettleToast(null), 6000);
+      }
+      // 2) Load notes, config, balance.
+      fetchNotes();
+      fetchCloseBehavior();
+      fetchDarkMode();
+      fetchOpacity();
+      getBalance();
+    };
+    boot();
+
+    getCurrentWindow().isAlwaysOnTop().then((pinned) => {
+      useNoteStore.setState({ isPinned: pinned });
+    });
+  }, []);
 
   const handleCheckUpdate = async () => {
     setUpdateState({ phase: "checking" });
@@ -53,28 +84,14 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    fetchNotes();
-    fetchTemplates();
-    fetchCloseBehavior();
-    fetchDarkMode();
-    fetchOpacity();
-
-    const unlisten = listen("tray-new-note", () => {
-      createNote();
-    });
-
-    getCurrentWindow().isAlwaysOnTop().then((pinned) => {
-      useNoteStore.setState({ isPinned: pinned });
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+  const handleCheckWeekly = async () => {
+    try {
+      const result = await checkWeekly();
+      setWeeklyResult(result);
+    } catch (e) {
+      console.error("砺行修远结算失败:", e);
+    }
+  };
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -83,20 +100,6 @@ function App() {
       if (!mod) return;
 
       const s = useNoteStore.getState();
-
-      // Ctrl/Cmd + N → new note (open template picker)
-      if (!e.shiftKey && e.code === "KeyN") {
-        e.preventDefault();
-        s.setTemplatePickerOpen(true);
-        return;
-      }
-
-      // Ctrl/Cmd + D → delete current note
-      if (!e.shiftKey && e.code === "KeyD") {
-        e.preventDefault();
-        if (s.activeId) s.deleteNote(s.activeId);
-        return;
-      }
 
       // Ctrl/Cmd + , → open settings
       if (!e.shiftKey && e.code === "Comma") {
@@ -145,6 +148,7 @@ function App() {
       <TitleBar
         onSettings={() => setSettingsOpen(true)}
         onCheckUpdate={handleCheckUpdate}
+        onCheckWeekly={handleCheckWeekly}
       />
       <div className="app-body">
         <Sidebar />
@@ -152,13 +156,23 @@ function App() {
           <NoteEditor />
         </main>
       </div>
+
+      {settleToast && (
+        <div className="settle-toast">
+          <span>{settleToast}</span>
+          <button className="settle-toast-close" onClick={() => setSettleToast(null)}>
+            ✕
+          </button>
+        </div>
+      )}
+
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <UpdateDialog
         state={updateState}
         onClose={() => setUpdateState(null)}
         onUpdate={handleUpdate}
       />
-      <TemplatePicker />
+      <LixingDialog result={weeklyResult} onClose={() => setWeeklyResult(null)} />
     </div>
   );
 }

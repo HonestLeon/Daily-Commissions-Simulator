@@ -2,14 +2,16 @@ import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNoteStore } from "../stores/noteStore";
 import FirstCloseDialog from "./FirstCloseDialog";
+import yuanShiIcon from "../assets/yuan-shi.png";
 
 interface Props {
   onSettings: () => void;
   onCheckUpdate: () => void;
+  onCheckWeekly: () => void;
 }
 
-export default function TitleBar({ onSettings, onCheckUpdate }: Props) {
-  const { isPinned, opacity, closeToTray, setCloseBehavior, togglePin, setOpacity } =
+export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: Props) {
+  const { isPinned, opacity, closeToTray, setCloseBehavior, togglePin, setOpacity, yuanShi } =
     useNoteStore();
   const [showCloseDialog, setShowCloseDialog] = useState(false);
 
@@ -24,15 +26,12 @@ export default function TitleBar({ onSettings, onCheckUpdate }: Props) {
     setOpacity(Number(e.target.value));
   };
 
-  // Minimize: standard minimize, stays in taskbar
   const handleMinimize = async () => {
     await getCurrentWindow().minimize();
   };
 
-  // Close: check preference
   const handleClose = async () => {
     if (closeToTray === null) {
-      // First time: show dialog
       setShowCloseDialog(true);
     } else if (closeToTray) {
       await getCurrentWindow().hide();
@@ -67,8 +66,20 @@ export default function TitleBar({ onSettings, onCheckUpdate }: Props) {
         }}
       >
         <span className="titlebar-title">轻量便签</span>
+        <div className="titlebar-yuanshi" title="原石余额">
+          <img src={yuanShiIcon} alt="原石" width={18} height={18} />
+          {yuanShi}
+        </div>
         <div style={{ flex: 1 }} data-tauri-drag-region />
         <div className="titlebar-controls">
+          <button
+            className="titlebar-btn titlebar-btn-text"
+            onClick={onCheckWeekly}
+            title="砺行修远"
+          >
+            砺行修远
+          </button>
+
           <button
             className={`titlebar-btn ${isPinned ? "active" : ""}`}
             onClick={handlePin}

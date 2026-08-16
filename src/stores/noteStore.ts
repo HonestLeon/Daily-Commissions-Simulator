@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteMeta, TemplateMeta } from "../types";
+import type { NoteMeta, InitDailyResult, WeeklyResult } from "../types";
 
 interface NoteState {
   notes: NoteMeta[];
@@ -8,12 +8,12 @@ interface NoteState {
   isPinned: boolean;
   opacity: number;
   darkMode: boolean;
-  templates: TemplateMeta[];
-  templatePickerOpen: boolean;
   closeToTray: boolean | null;  // null = first time (not set yet)
+  yuanShi: number;
+  streak: number;
 
   fetchNotes: () => Promise<void>;
-  createNote: (templateId?: string) => Promise<string | null>;
+  initDaily: () => Promise<InitDailyResult | null>;
   deleteNote: (id: string) => Promise<void>;
   renameNote: (id: string, title: string) => Promise<void>;
   setActive: (id: string) => void;
@@ -22,15 +22,10 @@ interface NoteState {
   fetchOpacity: () => Promise<void>;
   fetchDarkMode: () => Promise<void>;
   setDarkMode: (dark: boolean) => Promise<void>;
-  fetchTemplates: () => Promise<void>;
-  saveAsTemplate: (name: string, content: string) => Promise<void>;
-  deleteTemplate: (id: string) => Promise<void>;
-  setTemplatePickerOpen: (open: boolean) => void;
   fetchCloseBehavior: () => Promise<void>;
   setCloseBehavior: (closeToTray: boolean) => Promise<void>;
-  exportNote: (id: string) => Promise<string | null>;
-  exportAllNotes: () => Promise<{ path: string; count: number } | null>;
-  importNotes: () => Promise<number | null>;
+  checkWeekly: () => Promise<WeeklyResult>;
+  getBalance: () => Promise<void>;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -39,16 +34,16 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   isPinned: false,
   opacity: 0.92,
   darkMode: false,
-  templates: [],
-  templatePickerOpen: false,
   closeToTray: null,
+  yuanShi: 0,
+  streak: 0,
 
   fetchNotes: async () => {
     try {
       const notes: NoteMeta[] = await invoke("list_notes");
       set({ notes });
       if (notes.length > 0 && !get().activeId) {
-        // Restore last active note, or fallback to first
+        // Restore last active note, or fallback to the most recent.
         const lastId = localStorage.getItem("last-active-note");
         const restored = lastId && notes.some((n) => n.id === lastId);
         set({ activeId: restored ? lastId : notes[0].id });
@@ -58,19 +53,13 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  createNote: async (templateId?: string) => {
+  initDaily: async () => {
     try {
-      let note: NoteMeta;
-      if (templateId) {
-        note = await invoke("create_note_from_template", { templateId });
-      } else {
-        note = await invoke("create_note", { title: "无标题便签" });
-      }
-      const notes = [...get().notes, note];
-      set({ notes, activeId: note.id, templatePickerOpen: false });
-      return note.id;
+      const result: InitDailyResult = await invoke("init_daily");
+      set({ yuanShi: result.yuan_shi });
+      return result;
     } catch (e) {
-      console.error("Failed to create note:", e);
+      console.error("Failed to init daily:", e);
       return null;
     }
   },
@@ -95,9 +84,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     try {
       await invoke("rename_note", { id, newTitle: title });
       set({
-        notes: get().notes.map((n) =>
-          n.id === id ? { ...n, title } : n
-        ),
+        notes: get().notes.map((n) => (n.id === id ? { ...n, title } : n)),
       });
     } catch (e) {
       console.error("Failed to rename note:", e);
@@ -147,35 +134,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  fetchTemplates: async () => {
-    try {
-      const templates: TemplateMeta[] = await invoke("list_templates");
-      set({ templates });
-    } catch (e) {
-      console.error("Failed to fetch templates:", e);
-    }
-  },
-
-  saveAsTemplate: async (name: string, content: string) => {
-    try {
-      const meta = await invoke<TemplateMeta>("save_template", { name, content });
-      set({ templates: [...get().templates, meta] });
-    } catch (e) {
-      console.error("Failed to save template:", e);
-    }
-  },
-
-  deleteTemplate: async (id: string) => {
-    try {
-      await invoke("delete_template", { id });
-      set({ templates: get().templates.filter((t) => t.id !== id) });
-    } catch (e) {
-      console.error("Failed to delete template:", e);
-    }
-  },
-
-  setTemplatePickerOpen: (open: boolean) => set({ templatePickerOpen: open }),
-
   fetchCloseBehavior: async () => {
     try {
       const tray: boolean = await invoke("get_close_behavior");
@@ -194,37 +152,19 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  exportNote: async (id: string) => {
-    try {
-      const path: string | null = await invoke("export_note", { id });
-      return path;
-    } catch (e) {
-      console.error("Failed to export note:", e);
-      throw e;
-    }
+  checkWeekly: async () => {
+    const result: WeeklyResult = await invoke("check_weekly");
+    set({ streak: result.streak, yuanShi: get().yuanShi + result.reward });
+    return result;
   },
 
-  exportAllNotes: async () => {
+  getBalance: async () => {
     try {
-      const result: [string, number] | null = await invoke("export_all_notes");
-      if (!result) return null;
-      return { path: result[0], count: result[1] };
+      const yuanShi: number = await invoke("get_yuan_shi");
+      const streak: number = await invoke("get_streak");
+      set({ yuanShi, streak });
     } catch (e) {
-      console.error("Failed to export all notes:", e);
-      throw e;
-    }
-  },
-
-  importNotes: async () => {
-    try {
-      const count: number | null = await invoke("import_notes");
-      if (count) {
-        await get().fetchNotes();
-      }
-      return count;
-    } catch (e) {
-      console.error("Failed to import notes:", e);
-      throw e;
+      console.error("Failed to get balance:", e);
     }
   },
 }));
