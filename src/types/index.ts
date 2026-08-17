@@ -10,6 +10,9 @@ export interface NoteMeta {
 
 export type ViewMode = "edit" | "preview" | "split";
 
+/** 标题栏置顶模式：pin=始终置顶；alarm=定时置顶提醒；normal=正常 */
+export type PinMode = "pin" | "alarm" | "normal";
+
 export interface UpdateInfo {
   current_version: string;
   latest_version: string;

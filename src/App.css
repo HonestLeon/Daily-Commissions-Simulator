@@ -51,7 +51,7 @@ body,
   height: 18px;
   margin-left: 6px;
   border-radius: 4px;
-  pointer-events: none;
+  cursor: pointer;
   flex-shrink: 0;
 }
 
@@ -103,6 +103,11 @@ body,
 .titlebar-btn.active {
   color: #e67e22;
   background: rgba(230, 126, 34, 0.12);
+}
+
+.titlebar-btn.alarm {
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.12);
 }
 
 .titlebar-btn-close:hover {
@@ -472,6 +477,40 @@ body,
   z-index: 10;
 }
 
+/* === 明日委托勾选框（任务/引用块末尾） === */
+.tomorrow-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  cursor: pointer;
+  vertical-align: middle;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  border-radius: 3px;
+}
+
+.tomorrow-check:hover {
+  opacity: 1;
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.12);
+}
+
+[data-theme="dark"] .tomorrow-check {
+  color: #777;
+}
+
+[data-theme="dark"] .tomorrow-check:hover {
+  color: #5b9eff;
+  background: rgba(91, 158, 255, 0.15);
+}
+
 /* === Crepe Theme overrides for semi-transparent === */
 .milkdown-wrapper {
   --crepe-color-background: transparent;
@@ -824,6 +863,23 @@ body,
   margin-bottom: 8px;
 }
 
+.settings-number-input {
+  width: 70px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #333;
+  outline: none;
+  text-align: right;
+  font-family: inherit;
+}
+
+.settings-number-input:focus {
+  border-color: #4a9eff;
+}
+
 .settings-template-group {
   margin-bottom: 10px;
 }
@@ -1068,6 +1124,11 @@ body,
   background: rgba(255, 179, 71, 0.15);
 }
 
+[data-theme="dark"] .titlebar-btn.alarm {
+  color: #5b9eff;
+  background: rgba(91, 158, 255, 0.15);
+}
+
 [data-theme="dark"] .titlebar-btn-close:hover {
   background: rgba(220, 53, 69, 0.75);
   color: #fff;
@@ -1148,6 +1209,16 @@ body,
 
 [data-theme="dark"] .settings-label-desc {
   color: #888;
+}
+
+[data-theme="dark"] .settings-number-input {
+  background: rgba(50, 50, 50, 0.8);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ddd;
+}
+
+[data-theme="dark"] .settings-number-input:focus {
+  border-color: #5b9eff;
 }
 
 [data-theme="dark"] .settings-divider {

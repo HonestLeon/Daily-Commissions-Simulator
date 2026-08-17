@@ -8,7 +8,8 @@ use tauri::Manager;
 
 /// Fixed structure of a daily commission note. The three settled modules are
 /// 必做 / 学习·工作 / 生活·其他; 随手小记 is a free-form area, not settled.
-const DAILY_CONTENT: &str = "### 每日委托\n\n#### 必做\n\n- [ ] \n- [ ] \n\n#### 学习/工作\n\n- [ ] \n- [ ] \n\n#### 生活/其他\n\n- [ ] \n- [ ] \n\n#### 随手小记\n\n- \n- \n";
+/// Each module defaults to a single empty item; inheritance fills them in.
+const DAILY_CONTENT: &str = "### 每日委托\n\n#### 必做\n\n- [ ] \n\n#### 学习/工作\n\n- [ ] \n\n#### 生活/其他\n\n- [ ] \n\n#### 随手小记\n\n- \n";
 
 /// Modules that participate in settlement (all checkboxes checked = complete;
 /// an empty module counts as complete).
@@ -203,7 +204,8 @@ fn settle_previous_note(app: &tauri::AppHandle) -> Option<SettleOutcome> {
 
 /// Build today's content by inheriting from a previous commission: 必做 carries
 /// every item (reset to unchecked), other settled modules carry only unchecked
-/// items, and 随手小记 stays blank.
+/// items, 明日委托（引用块 `> ...`）转为普通任务继承到对应栏, and 随手小记
+/// stays blank.
 fn inherit_from_prev(prev: &str) -> String {
     let template = DAILY_CONTENT;
     let prev_sections = parse_md_sections(prev);
@@ -221,7 +223,7 @@ fn inherit_from_prev(prev: &str) -> String {
                 // 随手小记 is free-form — never inherit; the template's own
                 // placeholder lines below will be written as-is.
                 if sec_name != "随手小记" {
-                    let mut inserted = false;
+                    let mut items: Vec<String> = Vec::new();
                     if let Some(prev_sec) = prev_sections.get(sec_name) {
                         let is_checkbox = |l: &&str| -> bool {
                             let t = l.trim_start();
@@ -231,26 +233,32 @@ fn inherit_from_prev(prev: &str) -> String {
                             let t = l.trim_start();
                             t.starts_with("- [ ]") || t.starts_with("* [ ]")
                         };
-                        let raw_items: Vec<&str> = if sec_name == "必做" {
-                            prev_sec.lines().filter(is_checkbox).collect()
-                        } else {
-                            prev_sec.lines().filter(is_unchecked).collect()
-                        };
-                        if !raw_items.is_empty() {
-                            for item in &raw_items {
-                                let line = if sec_name == "必做" {
-                                    reset_checkbox(item)
-                                } else {
-                                    item.to_string()
-                                };
-                                result.push_str(&line);
-                                result.push('\n');
+                        // 普通待办：必做全量继承并重置勾选，其余只继承未完成项
+                        if sec_name == "必做" {
+                            for item in prev_sec.lines().filter(is_checkbox) {
+                                items.push(reset_checkbox(item));
                             }
-                            inserted = true;
+                        } else {
+                            for item in prev_sec.lines().filter(is_unchecked) {
+                                items.push(item.to_string());
+                            }
+                        }
+                        // 明日委托（引用块 `> text`）：在新一天转为普通任务 `- [ ] text`
+                        for pline in prev_sec.lines() {
+                            if let Some(text) = pline.trim_start().strip_prefix('>') {
+                                let text = text.trim_start();
+                                if !text.is_empty() {
+                                    items.push(format!("- [ ] {}", text));
+                                }
+                            }
                         }
                     }
-                    if !inserted {
-                        result.push_str("- [ ] \n");
+                    if items.is_empty() {
+                        items.push("- [ ] ".to_string());
+                    }
+                    for item in items {
+                        result.push_str(&item);
+                        result.push('\n');
                     }
                     continue;
                 }
@@ -522,6 +530,12 @@ struct AppConfig {
     yuan_shi: u32,
     #[serde(default)]
     streak: u32,
+    /// 闹钟模式：每隔 alarm_interval 秒弹出置顶提醒（默认 10 分钟）
+    #[serde(default)]
+    alarm_interval: u64,
+    /// 闹钟模式：置顶显示的时长（秒，最长 60）
+    #[serde(default)]
+    alarm_duration: u64,
 }
 
 impl Default for AppConfig {
@@ -532,6 +546,8 @@ impl Default for AppConfig {
             opacity: 0.92,
             yuan_shi: 0,
             streak: 0,
+            alarm_interval: 600,
+            alarm_duration: 15,
         }
     }
 }
@@ -602,6 +618,30 @@ fn get_opacity(app: tauri::AppHandle) -> f32 {
 fn set_opacity(app: tauri::AppHandle, opacity: f32) {
     let mut config = load_config(&app);
     config.opacity = opacity;
+    save_config(&app, &config);
+}
+
+#[tauri::command]
+fn get_alarm_interval(app: tauri::AppHandle) -> u64 {
+    load_config(&app).alarm_interval
+}
+
+#[tauri::command]
+fn set_alarm_interval(app: tauri::AppHandle, seconds: u64) {
+    let mut config = load_config(&app);
+    config.alarm_interval = seconds.max(1);
+    save_config(&app, &config);
+}
+
+#[tauri::command]
+fn get_alarm_duration(app: tauri::AppHandle) -> u64 {
+    load_config(&app).alarm_duration
+}
+
+#[tauri::command]
+fn set_alarm_duration(app: tauri::AppHandle, seconds: u64) {
+    let mut config = load_config(&app);
+    config.alarm_duration = seconds.clamp(1, 60);
     save_config(&app, &config);
 }
 
@@ -1007,6 +1047,23 @@ mod tests {
     }
 
     #[test]
+    fn inherit_turns_tomorrow_quotes_into_tasks() {
+        let prev = "### 每日委托\n\n#### 必做\n\n- [x] A\n\n#### 学习/工作\n\n- [ ] C\n> 明日做X\n\n#### 生活/其他\n\n> 明天买\n\n#### 随手小记\n\n- 灵感\n";
+        let result = inherit_from_prev(prev);
+        // 明日委托（引用块 >）在新一天转为普通任务 - [ ]
+        assert!(result.contains("- [ ] 明日做X"));
+        assert!(result.contains("- [ ] 明天买"));
+        // 必做全部继承并重置勾选
+        assert!(result.contains("- [ ] A"));
+        // 学习/工作 未完成项照常继承
+        assert!(result.contains("- [ ] C"));
+        // 新一天内容不再保留引用块符号
+        assert!(!result.contains('>'));
+        // 随手小记 不继承
+        assert!(!result.contains("灵感"));
+    }
+
+    #[test]
     fn registry_value_data_has_quotes_and_startup_flag() {
         let data = autostart_reg_value_data(r"C:\Program Files\轻量便签\app.exe");
         assert_eq!(data, r#""C:\Program Files\轻量便签\app.exe" --startup"#);
@@ -1056,6 +1113,7 @@ pub fn run() {
                 )
                 .build(),
         )
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             list_notes,
             delete_note,
@@ -1076,6 +1134,10 @@ pub fn run() {
             set_dark_mode,
             get_opacity,
             set_opacity,
+            get_alarm_interval,
+            set_alarm_interval,
+            get_alarm_duration,
+            set_alarm_duration,
             check_update,
             download_and_install,
         ])

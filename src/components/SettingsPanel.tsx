@@ -8,7 +8,8 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const { closeToTray, darkMode, setCloseBehavior, setDarkMode } = useNoteStore();
+  const { closeToTray, darkMode, alarmInterval, alarmDuration, setCloseBehavior, setDarkMode, setAlarmInterval, setAlarmDuration } =
+    useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
 
   useEffect(() => {
@@ -93,6 +94,37 @@ export default function SettingsPanel({ open, onClose }: Props) {
               <div className="settings-toggle-knob" />
             </div>
           </label>
+
+          {/* Alarm mode params */}
+          <div className="settings-section-title">闹钟提醒</div>
+          <div className="settings-row">
+            <div className="settings-label">
+              <div className="settings-label-title">提醒间隔（分钟）</div>
+              <div className="settings-label-desc">闹钟模式下每隔该时长（分钟）弹出置顶提醒</div>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={alarmInterval}
+              className="settings-number-input"
+              onChange={(e) => setAlarmInterval(Number(e.target.value))}
+            />
+          </div>
+          <div className="settings-row">
+            <div className="settings-label">
+              <div className="settings-label-title">置顶时长（秒，最长 60）</div>
+              <div className="settings-label-desc">置顶显示该时长后隐藏到任务栏</div>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={alarmDuration}
+              className="settings-number-input"
+              onChange={(e) => setAlarmDuration(Number(e.target.value))}
+            />
+          </div>
         </div>
       </div>
     </>

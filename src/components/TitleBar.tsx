@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNoteStore } from "../stores/noteStore";
 import FirstCloseDialog from "./FirstCloseDialog";
 import yuanShiIcon from "../assets/yuan-shi.png";
 import appIcon from "../assets/app-icon.png";
 import lixingIcon from "../assets/lixing.png";
+
+const GITEE_REPO_URL = "https://gitee.com/Honest_Leon/lightweight-sticky-notes";
 
 interface Props {
   onSettings: () => void;
@@ -13,16 +16,17 @@ interface Props {
 }
 
 export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: Props) {
-  const { isPinned, opacity, closeToTray, setCloseBehavior, togglePin, setOpacity, yuanShi } =
+  const { pinMode, alarmInterval, alarmDuration, opacity, closeToTray, setCloseBehavior, cyclePinMode, setOpacity, yuanShi } =
     useNoteStore();
   const [showCloseDialog, setShowCloseDialog] = useState(false);
 
-  const handlePin = async () => {
-    const win = getCurrentWindow();
-    const newPinned = !isPinned;
-    await win.setAlwaysOnTop(newPinned);
-    togglePin();
-  };
+  const modeIcon = pinMode === "pin" ? "📌" : pinMode === "alarm" ? "⏰" : "⭕";
+  const modeTitle =
+    pinMode === "pin"
+      ? "始终置顶（点击切换模式）"
+      : pinMode === "alarm"
+        ? `定时置顶：每 ${alarmInterval} 分钟弹出 ${alarmDuration}s 后隐藏到任务栏（点击切换模式）`
+        : "正常状态（点击切换为始终置顶）";
 
   const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setOpacity(Number(e.target.value));
@@ -71,7 +75,8 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           className="titlebar-logo"
           src={appIcon}
           alt="轻量便签"
-          title="轻量便签"
+          title="打开 Gitee 仓库"
+          onClick={() => openUrl(GITEE_REPO_URL)}
         />
         <div className="titlebar-yuanshi" title="原石余额">
           <img src={yuanShiIcon} alt="原石" width={18} height={18} />
@@ -88,11 +93,11 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           </button>
 
           <button
-            className={`titlebar-btn ${isPinned ? "active" : ""}`}
-            onClick={handlePin}
-            title={isPinned ? "取消置顶" : "窗口置顶"}
+            className={`titlebar-btn ${pinMode === "pin" ? "active" : pinMode === "alarm" ? "alarm" : ""}`}
+            onClick={() => cyclePinMode()}
+            title={modeTitle}
           >
-            📌
+            {modeIcon}
           </button>
 
           <button className="titlebar-btn" onClick={onCheckUpdate} title="检查更新">

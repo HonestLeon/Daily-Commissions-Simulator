@@ -13,6 +13,7 @@
     "core:window:allow-minimize",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
-    "window-state:default"
+    "window-state:default",
+    "opener:default"
   ]
 }

@@ -16,6 +16,7 @@ function App() {
     fetchCloseBehavior,
     fetchDarkMode,
     fetchOpacity,
+    fetchAlarmConfig,
     initDaily,
     getBalance,
     checkWeekly,
@@ -47,12 +48,13 @@ function App() {
       fetchCloseBehavior();
       fetchDarkMode();
       fetchOpacity();
+      fetchAlarmConfig();
       getBalance();
     };
     boot();
 
     getCurrentWindow().isAlwaysOnTop().then((pinned) => {
-      useNoteStore.setState({ isPinned: pinned });
+      useNoteStore.setState({ pinMode: pinned ? "pin" : "normal" });
     });
   }, []);
 
@@ -122,12 +124,10 @@ function App() {
         return;
       }
 
-      // Ctrl/Cmd + Shift + T → toggle always-on-top
+      // Ctrl/Cmd + Shift + T → cycle pin mode
       if (e.shiftKey && e.code === "KeyT") {
         e.preventDefault();
-        const newPinned = !s.isPinned;
-        getCurrentWindow().setAlwaysOnTop(newPinned);
-        s.togglePin();
+        s.cyclePinMode();
         return;
       }
 
