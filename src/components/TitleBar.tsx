@@ -3,6 +3,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNoteStore } from "../stores/noteStore";
 import FirstCloseDialog from "./FirstCloseDialog";
 import yuanShiIcon from "../assets/yuan-shi.png";
+import appIcon from "../assets/app-icon.png";
+import lixingIcon from "../assets/lixing.png";
 
 interface Props {
   onSettings: () => void;
@@ -65,7 +67,12 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           }
         }}
       >
-        <span className="titlebar-title">轻量便签</span>
+        <img
+          className="titlebar-logo"
+          src={appIcon}
+          alt="轻量便签"
+          title="轻量便签"
+        />
         <div className="titlebar-yuanshi" title="原石余额">
           <img src={yuanShiIcon} alt="原石" width={18} height={18} />
           {yuanShi}
@@ -73,11 +80,11 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
         <div style={{ flex: 1 }} data-tauri-drag-region />
         <div className="titlebar-controls">
           <button
-            className="titlebar-btn titlebar-btn-text"
+            className="titlebar-btn"
             onClick={onCheckWeekly}
             title="砺行修远"
           >
-            砺行修远
+            <img className="titlebar-btn-icon" src={lixingIcon} alt="砺行修远" />
           </button>
 
           <button

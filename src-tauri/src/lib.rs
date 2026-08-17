@@ -100,12 +100,12 @@ fn today_ymd() -> String {
     Local::now().format("%Y-%m-%d").to_string()
 }
 
-/// "2026-08-16T..." -> "每日委托0816"
+/// "2026-08-16T..." -> "0816"
 fn format_daily_title(iso: &str) -> String {
     if iso.len() >= 10 {
-        format!("每日委托{}{}", &iso[5..7], &iso[8..10])
+        format!("{}{}", &iso[5..7], &iso[8..10])
     } else {
-        "每日委托".to_string()
+        String::new()
     }
 }
 
@@ -951,8 +951,8 @@ mod tests {
 
     #[test]
     fn daily_title_uses_created_date() {
-        assert_eq!(format_daily_title("2026-08-16T10:00:00"), "每日委托0816");
-        assert_eq!(format_daily_title("2026-01-05T10:00:00"), "每日委托0105");
+        assert_eq!(format_daily_title("2026-08-16T10:00:00"), "0816");
+        assert_eq!(format_daily_title("2026-01-05T10:00:00"), "0105");
     }
 
     #[test]

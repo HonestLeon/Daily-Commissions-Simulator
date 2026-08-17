@@ -46,12 +46,13 @@ body,
   flex-shrink: 0;
 }
 
-.titlebar-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #444;
+.titlebar-logo {
+  width: 18px;
+  height: 18px;
   margin-left: 6px;
+  border-radius: 4px;
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .titlebar-yuanshi {
@@ -68,11 +69,10 @@ body,
   pointer-events: none;
 }
 
-.titlebar-btn-text {
-  width: auto;
-  padding: 0 10px;
-  font-size: 12px;
-  white-space: nowrap;
+.titlebar-btn-icon {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
 }
 
 .titlebar-controls {
@@ -150,8 +150,8 @@ body,
 
 /* === Sidebar === */
 .sidebar {
-  width: 160px;
-  min-width: 160px;
+  width: 100px;
+  min-width: 100px;
   background: rgba(243, 244, 246, calc(0.5 * var(--app-bg-opacity)));
   border-right: 1px solid rgba(255, 255, 255, 0.35);
   display: flex;
@@ -891,10 +891,6 @@ body,
 [data-theme="dark"] .titlebar {
   background: rgba(30, 30, 30, calc(0.65 * var(--app-bg-opacity)));
   border-bottom-color: rgba(255, 255, 255, 0.06);
-}
-
-[data-theme="dark"] .titlebar-title {
-  color: #ccc;
 }
 
 [data-theme="dark"] .sidebar {

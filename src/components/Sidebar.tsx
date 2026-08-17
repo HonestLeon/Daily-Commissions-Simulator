@@ -92,7 +92,7 @@ export default function Sidebar() {
         />
       ) : (
         <>
-          <div className="sidebar-item-title">{note.title || "每日委托"}</div>
+          <div className="sidebar-item-title">{note.title || "(无标题)"}</div>
           <div className="sidebar-item-date">{formatDate(note.created_at)}</div>
         </>
       )}
