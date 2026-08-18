@@ -19,7 +19,9 @@ function textEndPos(node: Node): number | null {
   let end: number | null = null;
   node.forEach((child, offset) => {
     if (end == null && child.isTextblock) {
-      end = offset + child.nodeSize - 1;
+      // 父节点内容区从 +1 开始；段落开标记在 1+offset，段内文本末尾 = 开标记 + nodeSize - 1
+      // 即相对偏移 = offset + child.nodeSize
+      end = offset + child.nodeSize;
     }
   });
   return end;
@@ -74,23 +76,34 @@ export const tomorrowCheckProse = $prose((ctx) => {
       if (!node) return;
 
       if (isTask && node.type === listItemType && node.attrs.checked != null) {
-        // 任务 -> 引用块（明日委托）
-        const para = schema.nodes.paragraph.create(null, collectInline(node));
-        const quote = schema.nodes.blockquote.create(null, para);
-        let from = absPos;
-        let to = absPos + node.nodeSize;
+        // 任务 -> 引用块（明日委托）：显式重建父列表，确定性避免残留空列表
         const $pos = doc.resolve(absPos);
-        const parent = $pos.parent;
-        // 若该任务项是所在列表的唯一子项，则整体替换列表，避免产生空列表
-        if (
-          (parent.type.name === "bullet_list" || parent.type.name === "ordered_list") &&
-          parent.childCount === 1
-        ) {
-          const depth = $pos.depth;
-          from = $pos.before(depth - 1);
-          to = from + $pos.node(depth - 1).nodeSize;
-        }
-        view.dispatch(view.state.tr.replaceWith(from, to, quote));
+        const list = $pos.parent; // bullet_list / ordered_list
+        const quote = schema.nodes.blockquote.create(
+          null,
+          schema.nodes.paragraph.create(null, collectInline(node))
+        );
+        // 用片段序列替换整个父列表：目标项换为引用块，其余项按连续段重新分组
+        const parts: Node[] = [];
+        let group: Node[] = [];
+        const flushGroup = () => {
+          if (group.length > 0) {
+            parts.push(list.type.create(list.attrs, group));
+            group = [];
+          }
+        };
+        list.forEach((child) => {
+          if (child === node) {
+            flushGroup();
+            parts.push(quote);
+          } else {
+            group.push(child);
+          }
+        });
+        flushGroup();
+        view.dispatch(
+          view.state.tr.replaceWith($pos.before(), $pos.before() + list.nodeSize, parts)
+        );
       } else if (!isTask && node.type === blockquoteType) {
         // 引用块 -> 任务
         const para = schema.nodes.paragraph.create(null, collectInline(node));
@@ -128,18 +141,24 @@ export const tomorrowCheckProse = $prose((ctx) => {
     props: {
       decorations(state) {
         const decos: Decoration[] = [];
+        // 光标所在的“项”（任务项/引用块）不显示勾选框；
+        // 注意：只跳过光标所在的目标节点本身，不跳过其祖先（如整个列表），
+        // 否则同列表的其他项也会被一并隐藏。
+        const selFrom = state.selection.from;
         state.doc.descendants((node, pos) => {
-          if (node.type === listItemType && node.attrs.checked != null) {
-            const end = textEndPos(node);
-            if (end != null) {
-              decos.push(Decoration.widget(pos + end, () => makeButton(true, pos), { side: -1 }));
-            }
-          } else if (node.type === blockquoteType) {
-            const end = textEndPos(node);
-            if (end != null) {
-              decos.push(Decoration.widget(pos + end, () => makeButton(false, pos), { side: -1 }));
-            }
+          const isTask = node.type === listItemType && node.attrs.checked != null;
+          const isQuote = node.type === blockquoteType;
+          if (!isTask && !isQuote) return; // 非目标节点，继续向下遍历
+          if (selFrom > pos && selFrom < pos + node.nodeSize) {
+            return false; // 光标在这一项内（输入中）→ 不显示
           }
+          const end = textEndPos(node);
+          if (end != null) {
+            decos.push(
+              Decoration.widget(pos + end, () => makeButton(isTask, pos), { side: -1 })
+            );
+          }
+          return false; // 目标节点内部无需再遍历
         });
         return DecorationSet.create(state.doc, decos);
       },

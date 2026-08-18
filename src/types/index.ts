@@ -17,7 +17,10 @@ export interface UpdateInfo {
   current_version: string;
   latest_version: string;
   has_update: boolean;
+  /** 安装版安装包下载地址（setup exe） */
   download_url: string;
+  /** 免安装版（绿色版）exe 下载地址 */
+  portable_download_url: string;
 }
 
 export interface InitDailyResult {

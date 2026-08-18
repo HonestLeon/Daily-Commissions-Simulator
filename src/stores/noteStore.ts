@@ -6,6 +6,7 @@ import type { NoteMeta, InitDailyResult, WeeklyResult, PinMode } from "../types"
 // Module-level timer IDs for alarm mode
 let alarmIntervalId: ReturnType<typeof setInterval> | null = null;
 let alarmTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let alarmFirstId: ReturnType<typeof setTimeout> | null = null;
 
 function stopAlarmTimer() {
   if (alarmIntervalId !== null) {
@@ -15,6 +16,10 @@ function stopAlarmTimer() {
   if (alarmTimeoutId !== null) {
     clearTimeout(alarmTimeoutId);
     alarmTimeoutId = null;
+  }
+  if (alarmFirstId !== null) {
+    clearTimeout(alarmFirstId);
+    alarmFirstId = null;
   }
 }
 
@@ -30,22 +35,33 @@ function startAlarmTimer(intervalMs: number, durationMs: number) {
       const win = getCurrentWindow();
       await win.show();
       await win.setAlwaysOnTop(true);
-      await win.setFocus();
-      alarmTimeoutId = setTimeout(async () => {
-        try {
-          await win.setAlwaysOnTop(false);
-          await win.hide();
-        } catch {
-          // window may already be closed
-        }
-      }, durationMs);
     } catch {
-      // ignore errors during alarm cycle
+      return; // 窗口操作失败，本轮放弃
     }
+    // 聚焦尽力而为，失败不影响后续隐藏流程
+    getCurrentWindow().setFocus().catch(() => {});
+    alarmTimeoutId = setTimeout(async () => {
+      alarmTimeoutId = null;
+      try {
+        const win = getCurrentWindow();
+        await win.setAlwaysOnTop(false);
+        // 结束行为跟随“关闭行为”设置：托盘→隐藏，直接退出→最小化到任务栏
+        const toTray = useNoteStore.getState().closeToTray ?? true;
+        if (toTray) {
+          await win.hide();
+        } else {
+          await win.minimize();
+        }
+      } catch {
+        // window may already be closed
+      }
+    }, durationMs);
   };
-  // First cycle immediately
-  runCycle();
-  alarmIntervalId = setInterval(runCycle, intervalMs);
+  // 首轮 1 分钟后触发，之后按设置间隔循环（间隔最小 1 分钟）
+  alarmFirstId = setTimeout(() => {
+    runCycle();
+    alarmIntervalId = setInterval(runCycle, Math.max(60_000, intervalMs));
+  }, 60_000);
 }
 
 interface NoteState {
@@ -248,10 +264,13 @@ export const useNoteStore = create<NoteState>((set, get) => ({
 
   fetchAlarmConfig: async () => {
     try {
-      // 后端以秒存储，前端以分钟展示
+      // 后端以秒存储，前端以分钟展示；至少 1 分钟（旧配置可能读到 0）
       const alarmIntervalSec: number = await invoke("get_alarm_interval");
       const alarmDuration: number = await invoke("get_alarm_duration");
-      set({ alarmInterval: Math.round(alarmIntervalSec / 60), alarmDuration });
+      set({
+        alarmInterval: Math.max(1, Math.round(alarmIntervalSec / 60)),
+        alarmDuration: Math.max(1, alarmDuration),
+      });
     } catch {
       // keep defaults
     }

@@ -757,6 +757,9 @@ body,
   transform: translate(-50%, -50%);
   z-index: 201;
   width: 340px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(30px);
   border-radius: 12px;
@@ -791,6 +794,9 @@ body,
 
 .settings-body {
   padding: 12px 18px 18px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-row {

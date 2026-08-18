@@ -73,10 +73,13 @@ function App() {
 
   const handleUpdate = async () => {
     if (updateState?.phase !== "result") return;
-    const url = updateState.info.download_url;
+    const { download_url, portable_download_url } = updateState.info;
     setUpdateState({ phase: "installing" });
     try {
-      await invoke("download_and_install", { url });
+      await invoke("download_and_install", {
+        setupUrl: download_url,
+        portableUrl: portable_download_url,
+      });
       setUpdateState({ phase: "done" });
     } catch (e) {
       setUpdateState({

@@ -64,7 +64,9 @@ fn write_index(app: &tauri::AppHandle, notes: &[NoteMeta]) {
 
 fn load_note_internal(app: &tauri::AppHandle, id: &str) -> Result<String, String> {
     let md_path = notes_dir(app).join(format!("{}.md", id));
-    fs::read_to_string(&md_path).map_err(|e| e.to_string())
+    let content = fs::read_to_string(&md_path).map_err(|e| e.to_string())?;
+    // 旧数据可能存在无尾空格的空复选框，读出时规范化以保证渲染
+    Ok(ensure_task_trailing_space(&content))
 }
 
 fn create_note_with_content(
@@ -130,13 +132,75 @@ fn monday_of_current_week() -> chrono::NaiveDate {
 
 // ── Settlement / 原石 ──
 
-/// A module is complete when every checkbox is checked, or when it has no
-/// checkboxes at all (empty module counts as complete).
+/// 提取复选框条目（`- [ ]` / `- [x]` / `* ` 变体）标记之后的文本；
+/// 非复选框行返回 None。
+fn checkbox_tail(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    let t = if let Some(r) = t.strip_prefix("- [") {
+        r
+    } else if let Some(r) = t.strip_prefix("* [") {
+        r
+    } else {
+        return None;
+    };
+    let t = if let Some(r) = t.strip_prefix("x]") {
+        r
+    } else if let Some(r) = t.strip_prefix("X]") {
+        r
+    } else if let Some(r) = t.strip_prefix(" ]") {
+        r
+    } else if let Some(r) = t.strip_prefix(']') {
+        r
+    } else {
+        return None;
+    };
+    Some(t)
+}
+
+/// 空白项（空委托）：复选框标记后仅空白（含已勾选的空白项）。
+/// 结算、周统计、继承均忽略此类条目。
+fn is_blank_item(line: &str) -> bool {
+    checkbox_tail(line)
+        .map(|t| t.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// 为独占一行且标记后无内容的任务复选框补一个尾空格：
+/// Milkdown 需要 `- [ ] `（尾空格）才能把空项渲染为复选框。
+/// 有内容的行原样保留。
+fn ensure_task_trailing_space(content: &str) -> String {
+    let mut out = String::with_capacity(content.len() + 8);
+    for line in content.lines() {
+        let trimmed = line.trim_end();
+        // 仅处理形如 "- [ ]" / "- [x]"（标记后无任何内容）的行
+        let is_bare_task = ["- [ ]", "- [x]", "- [X]", "* [ ]", "* [x]", "* [X]"]
+            .iter()
+            .any(|m| trimmed == *m);
+        if is_bare_task {
+            out.push_str(trimmed);
+            out.push(' ');
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    // 保留原内容末尾无换行的形态
+    if !content.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// A module is complete when every non-blank checkbox is checked, or when it
+/// has no non-blank checkboxes at all (empty/blank-only module counts as
+/// complete).
 fn section_complete(section: &str) -> bool {
     let boxes: Vec<&str> = section
         .lines()
         .map(str::trim_start)
-        .filter(|l| l.starts_with("- [") || l.starts_with("* ["))
+        .filter(|l| {
+            (l.starts_with("- [") || l.starts_with("* [")) && !is_blank_item(l)
+        })
         .collect();
     if boxes.is_empty() {
         return true;
@@ -233,13 +297,20 @@ fn inherit_from_prev(prev: &str) -> String {
                             let t = l.trim_start();
                             t.starts_with("- [ ]") || t.starts_with("* [ ]")
                         };
-                        // 普通待办：必做全量继承并重置勾选，其余只继承未完成项
+                        // 普通待办：必做全量继承并重置勾选，其余只继承未完成项；
+                        // 空白项（空委托）一律不继承
                         if sec_name == "必做" {
-                            for item in prev_sec.lines().filter(is_checkbox) {
+                            for item in prev_sec
+                                .lines()
+                                .filter(|l| is_checkbox(l) && !is_blank_item(l))
+                            {
                                 items.push(reset_checkbox(item));
                             }
                         } else {
-                            for item in prev_sec.lines().filter(is_unchecked) {
+                            for item in prev_sec
+                                .lines()
+                                .filter(|l| is_unchecked(l) && !is_blank_item(l))
+                            {
                                 items.push(item.to_string());
                             }
                         }
@@ -247,8 +318,8 @@ fn inherit_from_prev(prev: &str) -> String {
                         for pline in prev_sec.lines() {
                             if let Some(text) = pline.trim_start().strip_prefix('>') {
                                 let text = text.trim_start();
-                                if !text.is_empty() {
-                                    items.push(format!("- [ ] {}", text));
+                                if !text.trim().is_empty() {
+                                    items.push(format!("- [ ] {}", text.trim()));
                                 }
                             }
                         }
@@ -477,6 +548,8 @@ fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 fn save_note(app: tauri::AppHandle, id: String, content: String) -> Result<(), String> {
     let md_path = notes_dir(&app).join(format!("{}.md", &id));
+    // 空复选框补尾空格，保证保存/重开后仍能渲染
+    let content = ensure_task_trailing_space(&content);
 
     // 内容未变化则跳过：编辑器加载时 markdownUpdated 会回传一次原内容，
     // 若照样写入会刷新 updated_at、并把每日委托标题改成当天日期。
@@ -561,11 +634,24 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
 
 fn load_config(app: &tauri::AppHandle) -> AppConfig {
     let path = config_path(app);
-    if path.exists() {
+    let mut config = if path.exists() {
         let data = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&data).unwrap_or_default()
     } else {
         AppConfig::default()
+    };
+    normalize_alarm_config(&mut config);
+    config
+}
+
+/// 规范化闹钟参数：旧版本配置文件缺少字段时 serde 会填 0（字段级默认值），
+/// 0 间隔会导致前端定时器空转，这里统一回退到默认值。
+fn normalize_alarm_config(config: &mut AppConfig) {
+    if config.alarm_interval == 0 {
+        config.alarm_interval = AppConfig::default().alarm_interval;
+    }
+    if config.alarm_duration == 0 {
+        config.alarm_duration = AppConfig::default().alarm_duration;
     }
 }
 
@@ -655,19 +741,43 @@ struct UpdateInfo {
     current_version: String,
     latest_version: String,
     has_update: bool,
+    /// 安装版安装包（文件名含 setup 的 .exe 附件）
     download_url: String,
+    /// 免安装版（绿色版）exe（文件名含 portable 的 .exe 附件）
+    portable_download_url: String,
 }
 
-fn percent_encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| {
-            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
-                (b as char).to_string()
-            } else {
-                format!("%{:02X}", b)
-            }
+/// 从 Release 的 assets 中选取安装包下载地址：
+/// setup 附件（文件名含 "setup"）与 portable 附件（文件名含 "portable"，
+/// 回退到不含 "setup" 的 .exe）。返回 (setup_url, portable_url)。
+fn pick_release_assets(release: &serde_json::Value) -> (Option<String>, Option<String>) {
+    let assets = release
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let exe_assets: Vec<(String, String)> = assets
+        .iter()
+        .filter_map(|a| {
+            let name = a.get("name").and_then(|n| n.as_str())?.to_string();
+            let url = a
+                .get("browser_download_url")
+                .and_then(|u| u.as_str())?
+                .to_string();
+            Some((name, url))
         })
-        .collect()
+        .filter(|(name, _)| name.to_lowercase().ends_with(".exe"))
+        .collect();
+    let find = |pred: &dyn Fn(&str) -> bool| {
+        exe_assets
+            .iter()
+            .find(|(name, _)| pred(&name.to_lowercase()))
+            .map(|(_, url)| url.clone())
+    };
+    let setup = find(&|n| n.contains("setup"));
+    let portable = find(&|n| n.contains("portable"))
+        .or_else(|| find(&|n| !n.contains("setup")));
+    (setup, portable)
 }
 
 fn version_gt(a: &str, b: &str) -> bool {
@@ -691,59 +801,127 @@ fn version_gt(a: &str, b: &str) -> bool {
     false
 }
 
+/// 通过 Gitee Release API 检查更新：tag_name 作为最新版本号，
+/// 从附件中选取安装包下载地址。
 #[tauri::command]
 fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
     let url = format!(
-        "https://gitee.com/{}/{}/raw/master/src-tauri/tauri.conf.json",
+        "https://gitee.com/api/v5/repos/{}/{}/releases/latest",
         GITEE_OWNER, GITEE_REPO
     );
 
-    let body = ureq::get(&url)
+    let resp = match ureq::get(&url)
         .timeout(std::time::Duration::from_secs(15))
         .call()
-        .map_err(|e| format!("检查更新失败：无法连接 gitee（{}）", e))?
+    {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(404, _)) => {
+            return Err("检查更新失败：仓库尚未发布任何 Release".to_string());
+        }
+        Err(e) => return Err(format!("检查更新失败：无法连接 gitee（{}）", e)),
+    };
+    let body = resp
         .into_string()
         .map_err(|e| format!("读取响应失败：{}", e))?;
 
-    let conf: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("解析远程版本失败：{}", e))?;
-    let latest = conf
-        .get("version")
+    let release: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("解析 Release 信息失败：{}", e))?;
+
+    let latest = release
+        .get("tag_name")
         .and_then(|v| v.as_str())
-        .unwrap_or(&current)
-        .to_string();
+        .map(|t| t.trim().trim_start_matches('v').to_string())
+        .unwrap_or_else(|| current.clone());
 
     let has_update = version_gt(&latest, &current);
-    let filename = format!("轻量便签_{}_x64-setup.exe", latest);
-    let download_url = format!(
-        "https://gitee.com/{}/{}/raw/master/releases/{}",
-        GITEE_OWNER,
-        GITEE_REPO,
-        percent_encode(&filename)
-    );
+
+    // 仅在确有更新时才解析附件；无更新时无需下载地址
+    let (setup_url, portable_url) = if has_update {
+        let (s, p) = pick_release_assets(&release);
+        if s.is_none() && p.is_none() {
+            return Err(
+                "最新 Release 未附带安装包（.exe），请前往 Gitee 发布页手动下载".to_string(),
+            );
+        }
+        (s.unwrap_or_default(), p.unwrap_or_default())
+    } else {
+        (String::new(), String::new())
+    };
 
     Ok(UpdateInfo {
         current_version: current,
         latest_version: latest,
         has_update,
-        download_url,
+        download_url: setup_url,
+        portable_download_url: portable_url,
     })
 }
 
-#[tauri::command]
-fn download_and_install(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let tmp = std::env::temp_dir().join("lwsn-update");
-    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
-    let installer = tmp.join("setup.exe");
+/// 安装版的候选安装目录（相对 LOCALAPPDATA）
+fn installed_dirs(local_appdata: &std::path::Path) -> Vec<PathBuf> {
+    vec![
+        local_appdata.join("轻量便签"),
+        local_appdata.join("Programs").join("LightweightStickyNotes"),
+        local_appdata.join("LightweightStickyNotes"),
+    ]
+}
 
-    let resp = ureq::get(&url)
+/// 判断当前 exe 是否位于安装版的安装目录内（否则视为免安装版）
+fn exe_is_installed_version(exe: &std::path::Path, local_appdata: &std::path::Path) -> bool {
+    match exe.parent() {
+        Some(dir) => installed_dirs(local_appdata)
+            .iter()
+            .any(|d| dir == d),
+        None => false,
+    }
+}
+
+/// 下载 url 内容到指定文件
+fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    let resp = ureq::get(url)
         .timeout(std::time::Duration::from_secs(600))
         .call()
         .map_err(|e| format!("下载失败：{}", e))?;
     let mut reader = resp.into_reader();
-    let mut file = std::fs::File::create(&installer).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
     std::io::copy(&mut reader, &mut file).map_err(|e| format!("保存安装包失败：{}", e))?;
+    Ok(())
+}
+
+/// 免安装版自替换：旧 exe 改名 .exe.old → 写入新 exe → 启动新进程退出。
+/// 旧进程退出后 .old 可删（下次启动时清理）。
+fn self_replace_portable(
+    app: &tauri::AppHandle,
+    url: &str,
+    exe: &std::path::Path,
+) -> Result<(), String> {
+    let tmp = std::env::temp_dir().join("lwsn-update");
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let new_exe = tmp.join("portable.exe");
+    download_to(url, &new_exe)?;
+
+    let old_exe = exe.with_extension("exe.old");
+    std::fs::rename(exe, &old_exe).map_err(|e| format!("重命名当前程序失败：{}", e))?;
+
+    if let Err(e) = std::fs::copy(&new_exe, exe) {
+        // 回滚，保持原程序可运行
+        let _ = std::fs::rename(&old_exe, exe);
+        return Err(format!("写入新版本失败：{}", e));
+    }
+
+    std::process::Command::new(exe).spawn().ok();
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    app.exit(0);
+    Ok(())
+}
+
+/// 安装版：下载 setup 静默安装，安装完成后重启新版本
+fn install_via_setup(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
+    let tmp = std::env::temp_dir().join("lwsn-update");
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    let installer = tmp.join("setup.exe");
+    download_to(url, &installer)?;
 
     let status = std::process::Command::new(&installer)
         .arg("/S")
@@ -755,15 +933,11 @@ fn download_and_install(app: tauri::AppHandle, url: String) -> Result<(), String
 
     let exe_name = "lightweight-sticky-notes.exe";
     let candidates: Vec<PathBuf> = std::env::var("LOCALAPPDATA")
-        .map(|base| {
-            let base = PathBuf::from(base);
-            vec![
-                base.join("轻量便签").join(exe_name),
-                base.join("Programs").join("LightweightStickyNotes").join(exe_name),
-                base.join("LightweightStickyNotes").join(exe_name),
-            ]
-        })
-        .unwrap_or_default();
+        .map(|base| installed_dirs(&PathBuf::from(base)))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|d| d.join(exe_name))
+        .collect();
 
     if let Some(new_exe) = candidates.iter().find(|p| p.exists()) {
         std::process::Command::new(new_exe).spawn().ok();
@@ -772,6 +946,32 @@ fn download_and_install(app: tauri::AppHandle, url: String) -> Result<(), String
     }
 
     Ok(())
+}
+
+#[tauri::command]
+fn download_and_install(
+    app: tauri::AppHandle,
+    setup_url: String,
+    portable_url: String,
+) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let is_installed = std::env::var("LOCALAPPDATA")
+        .map(|base| exe_is_installed_version(&exe, &PathBuf::from(base)))
+        .unwrap_or(false);
+
+    if is_installed {
+        if setup_url.is_empty() {
+            return Err("最新 Release 未附带安装版安装包，请前往 Gitee 发布页手动下载"
+                .to_string());
+        }
+        install_via_setup(&app, &setup_url)
+    } else {
+        if portable_url.is_empty() {
+            return Err("最新 Release 未附带免安装版程序，请前往 Gitee 发布页手动下载"
+                .to_string());
+        }
+        self_replace_portable(&app, &portable_url, &exe)
+    }
 }
 
 // ── Autostart via registry (reliable, no VBS) ──
@@ -1010,6 +1210,73 @@ mod tests {
     }
 
     #[test]
+    fn section_complete_ignores_blank_items() {
+        // 仅空白项 -> 视为空模块 -> 完成
+        assert!(section_complete("- [ ] \n"));
+        assert!(section_complete("- [ ]\n"));
+        // 已勾选的空白项同样忽略
+        assert!(section_complete("- [x] \n"));
+        // 实项全勾 + 空白项 -> 完成
+        assert!(section_complete("- [x] A\n- [ ] \n"));
+        // 实项未勾 + 空白项 -> 不完成
+        assert!(!section_complete("- [ ] A\n- [ ] \n"));
+        // 实项有勾有未勾 -> 不完成
+        assert!(!section_complete("- [x] A\n- [ ] B\n"));
+    }
+
+    #[test]
+    fn ensure_task_trailing_space_rules() {
+        // 裸复选框补尾空格
+        assert_eq!(ensure_task_trailing_space("- [ ]"), "- [ ] ");
+        assert_eq!(ensure_task_trailing_space("- [x]"), "- [x] ");
+        assert_eq!(ensure_task_trailing_space("* [x]"), "* [x] ");
+        // 已带空格 / 有内容 / 普通行不变
+        assert_eq!(ensure_task_trailing_space("- [ ] "), "- [ ] ");
+        assert_eq!(ensure_task_trailing_space("- [ ] A"), "- [ ] A");
+        assert_eq!(ensure_task_trailing_space("普通行"), "普通行");
+        // 多行混合且保留末尾换行
+        assert_eq!(
+            ensure_task_trailing_space("#### 必做\n- [ ]\n- [x] A\n"),
+            "#### 必做\n- [ ] \n- [x] A\n"
+        );
+    }
+
+    #[test]
+    fn inherit_skips_blank_items() {
+        // 前一天各栏含 2 个空白项 + 1 个实项（旧模板形态）
+        let prev = "### 每日委托\n\n#### 必做\n\n- [ ] \n- [ ] \n- [x] A\n\n#### 学习/工作\n\n- [ ] \n- [ ] \n- [ ] B\n\n#### 生活/其他\n\n- [ ] \n- [ ] \n\n#### 随手小记\n\n- \n- \n";
+        let result = inherit_from_prev(prev);
+        // 实项被继承（必做重置勾选）
+        assert!(result.contains("- [ ] A"));
+        assert!(result.contains("- [ ] B"));
+        // 空白项不重复带入：统计结果中 "- [ ] "（空白行）次数
+        let blank_count = result
+            .lines()
+            .filter(|l| is_blank_item(l))
+            .count();
+        // 模板兜底只在生活/其他（无有效继承）出现 1 个空白项；必做/学习有实项则无空白项
+        assert_eq!(blank_count, 1);
+    }
+
+    #[test]
+    fn normalize_alarm_config_recovers_zero_values() {
+        // 旧配置缺失字段时 serde 填 0 → 回退默认
+        let mut c = AppConfig::default();
+        c.alarm_interval = 0;
+        c.alarm_duration = 0;
+        normalize_alarm_config(&mut c);
+        assert_eq!(c.alarm_interval, 600);
+        assert_eq!(c.alarm_duration, 15);
+        // 正常值不受影响
+        let mut ok = AppConfig::default();
+        ok.alarm_interval = 120;
+        ok.alarm_duration = 30;
+        normalize_alarm_config(&mut ok);
+        assert_eq!(ok.alarm_interval, 120);
+        assert_eq!(ok.alarm_duration, 30);
+    }
+
+    #[test]
     fn settle_reward_values() {
         let sections = |n: u32| -> std::collections::HashMap<String, String> {
             let mut m = std::collections::HashMap::new();
@@ -1086,6 +1353,64 @@ mod tests {
     }
 
     #[test]
+    fn pick_release_assets_rules() {
+        // setup + portable 附件分别选中
+        let release: serde_json::Value = serde_json::from_str(
+            r#"{"tag_name":"v0.2.0","assets":[
+                {"name":"更新说明.md","browser_download_url":"https://gitee.com/x/notes.md"},
+                {"name":"轻量便签_0.2.0_x64-setup.exe","browser_download_url":"https://gitee.com/x/setup.exe"},
+                {"name":"轻量便签_0.2.0_x64-portable.exe","browser_download_url":"https://gitee.com/x/portable.exe"}
+            ]}"#,
+        )
+        .unwrap();
+        let (setup, portable) = pick_release_assets(&release);
+        assert_eq!(setup.as_deref(), Some("https://gitee.com/x/setup.exe"));
+        assert_eq!(portable.as_deref(), Some("https://gitee.com/x/portable.exe"));
+
+        // 无 portable 附件时回退到不含 setup 的 .exe
+        let fallback: serde_json::Value = serde_json::from_str(
+            r#"{"assets":[
+                {"name":"app-setup.exe","browser_download_url":"https://gitee.com/x/s.exe"},
+                {"name":"lightweight-sticky-notes.exe","browser_download_url":"https://gitee.com/x/app.exe"}
+            ]}"#,
+        )
+        .unwrap();
+        let (setup, portable) = pick_release_assets(&fallback);
+        assert_eq!(setup.as_deref(), Some("https://gitee.com/x/s.exe"));
+        assert_eq!(portable.as_deref(), Some("https://gitee.com/x/app.exe"));
+
+        // 无 .exe 附件 / 无 assets 字段
+        let no_exe: serde_json::Value =
+            serde_json::from_str(r#"{"assets":[{"name":"a.md","browser_download_url":"u"}]}"#)
+                .unwrap();
+        assert_eq!(pick_release_assets(&no_exe), (None, None));
+        let no_assets: serde_json::Value =
+            serde_json::from_str(r#"{"tag_name":"v0.2.0"}"#).unwrap();
+        assert_eq!(pick_release_assets(&no_assets), (None, None));
+    }
+
+    #[test]
+    fn exe_is_installed_version_rules() {
+        let base = PathBuf::from(r"C:\Users\u\AppData\Local");
+        // 位于安装目录 → 安装版
+        assert!(exe_is_installed_version(
+            &base.join("Programs").join("LightweightStickyNotes").join("app.exe"),
+            &base
+        ));
+        assert!(exe_is_installed_version(&base.join("轻量便签").join("app.exe"), &base));
+        // 位于任意其他目录（绿色版）→ 免安装版
+        assert!(!exe_is_installed_version(
+            &PathBuf::from(r"D:\tools\app.exe"),
+            &base
+        ));
+        // 子目录不算安装版（安装版 exe 直接位于安装目录下）
+        assert!(!exe_is_installed_version(
+            &base.join("Programs").join("LightweightStickyNotes").join("sub").join("app.exe"),
+            &base
+        ));
+    }
+
+    #[test]
     fn version_comparison() {
         assert!(version_gt("0.1.2", "0.1.1"));
         assert!(version_gt("0.2.0", "0.1.9"));
@@ -1094,12 +1419,6 @@ mod tests {
         assert!(!version_gt("0.1.1", "0.1.1"));
         assert!(!version_gt("0.1.0", "0.1.1"));
         assert!(!version_gt("0.0.9", "0.1.0"));
-    }
-
-    #[test]
-    fn percent_encoding_keeps_ascii_and_encodes_unicode() {
-        assert_eq!(percent_encode("setup_0.1.1.exe"), "setup_0.1.1.exe");
-        assert!(percent_encode("轻量便签").contains('%'));
     }
 }
 
@@ -1145,6 +1464,11 @@ pub fn run() {
             let app_handle = app.handle().clone();
             migrate_autostart_entry();
             cleanup_old_autostart(&app_handle);
+
+            // 清理上次免安装版自更新留下的 .exe.old（旧进程可能尚未退出，失败则下次再清）
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = fs::remove_file(exe.with_extension("exe.old"));
+            }
 
             let _tray = build_tray(app)?;
 

@@ -27,11 +27,14 @@ npm-debug.log*
 # Tauri
 src-tauri/gen/
 
-# Installers (green/portable exe stays ignored; only release installers are tracked)
+# Installers / binaries — 发布产物统一走 Gitee Release，不入库
 *.exe
 *.msi
-!src-tauri/icons/*.exe
-!releases/*.exe
+*.exe.old
+releases/
+
+# Tool docs
+.trae/
 
 # Tool memory (WorkBuddy)
 .workbuddy/
