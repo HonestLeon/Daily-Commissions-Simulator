@@ -64,7 +64,14 @@ export default function LixingDialog({ result, onClose }: Props) {
               <>
                 <div>三全完成天数：<strong>{result.count}</strong> 天（≥5 达标）</div>
                 <div style={{ marginTop: 6 }}>
-                  🪨 获得奖励：<strong style={{ color: "#e67e22" }}>{result.reward} 原石</strong>
+                  {result.reward > 0 ? (
+                    <>
+                      🪨 获得奖励：{" "}
+                      <strong style={{ color: "#e67e22" }}>{result.reward} 原石</strong>
+                    </>
+                  ) : (
+                    <>🪨 本周奖励已领取（只结算一次）</>
+                  )}
                 </div>
                 <div style={{ marginTop: 6, color: "#888" }}>
                   砺行连续周数：{result.streak} 周

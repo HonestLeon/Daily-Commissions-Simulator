@@ -132,7 +132,7 @@
 
 ### 📦 安装版
 
-运行 `轻量便签_0.1.1_x64-setup.exe`，按提示完成安装。
+运行 `轻量便签_0.2.0_x64-setup.exe`，按提示完成安装。
 
 - 默认路径：`%LOCALAPPDATA%\Programs\LightweightStickyNotes`
 - 自动创建桌面和开始菜单快捷方式
@@ -195,7 +195,7 @@
 
 ## 截图展示
 
-> 下列截图基于 v0.1.1 版本，实际界面可能随版本迭代略有差异。
+> 下列截图基于 v0.2.0 版本，实际界面可能随版本迭代略有差异。
 
 | 浅色模式编辑 | 暗色模式编辑 | 委托列表 |
 | ------------ | ------------ | -------- |
@@ -264,7 +264,7 @@ npm run tauri build
 
 产物：
 - 绿色版：`src-tauri/target/release/lightweight-sticky-notes.exe`
-- 安装版：`src-tauri/target/release/bundle/nsis/轻量便签_0.1.1_x64-setup.exe`
+- 安装版：`src-tauri/target/release/bundle/nsis/轻量便签_0.2.0_x64-setup.exe`
 
 ### 开发脚本
 
@@ -280,9 +280,12 @@ npm run tauri dev  # 启动 Tauri 开发模式
 ## 项目结构
 
 ```text
-notebook/
+lightweight-sticky-notes/
 ├── src/                          # React 前端
-│   ├── assets/
+│   ├── assets/                   # 图标资源
+│   │   ├── app-icon.png
+│   │   ├── lixing.png            # 砺行修远图标
+│   │   ├── yuan-shi-16.png
 │   │   └── yuan-shi.png          # 原石图标
 │   ├── components/
 │   │   ├── TitleBar.tsx          # 标题栏（原石余额、砺行修远、置顶、透明度、最小/关闭）
@@ -291,25 +294,29 @@ notebook/
 │   │   ├── SettingsPanel.tsx     # 设置（自启、暗色、关闭行为）
 │   │   ├── FirstCloseDialog.tsx  # 首次关闭行为选择
 │   │   ├── UpdateDialog.tsx      # 检查更新弹窗
-│   │   └── LixingDialog.tsx      # 砺行修远结算弹窗
+│   │   ├── LixingDialog.tsx      # 砺行修远结算弹窗
+│   │   └── tomorrowCheck.ts      # 「明日委托」解析工具
 │   ├── stores/
 │   │   └── noteStore.ts          # Zustand 全局状态
 │   ├── types/
 │   │   └── index.ts              # TypeScript 类型定义
 │   ├── App.tsx                   # 根布局
 │   ├── App.css                   # 全局样式（含暗色模式）
-│   └── main.tsx                  # 入口
+│   ├── main.tsx                  # 入口
+│   └── vite-env.d.ts
 ├── src-tauri/                    # Rust 后端
 │   ├── src/
 │   │   ├── main.rs               # 进程入口
-│   │   └── lib.rs                # 命令定义、委托结算、砺行修远、托盘、Acrylic
+│   │   └── lib.rs                # 命令定义、委托结算、砺行修远、自更新、托盘、Acrylic
 │   ├── capabilities/
 │   │   └── default.json          # 权限声明
 │   ├── icons/                    # 应用图标
 │   ├── tauri.conf.json           # Tauri 配置
 │   └── Cargo.toml
-├── docs/                         # 文档与截图
+├── dist/                         # 前端构建产物（build 时生成）
 ├── releases/                     # 安装版发布包
+├── demo/                         # 演示页
+├── index.html
 ├── package.json
 ├── vite.config.ts
 └── tsconfig.json

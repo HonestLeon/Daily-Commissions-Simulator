@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use chrono::{Local, Datelike};
 use tauri::Manager;
 
@@ -462,7 +464,28 @@ struct WeeklyResult {
     eligible: bool,    // >= 5 天
     reward: u32,       // 达标：100*(streak+1)；未达标：0
     streak: u32,       // 更新后的连续达标周数
+    yuan_shi: u32,     // 结算后的权威原石余额（以后端为准，前端不再本地累加）
     days: Vec<WeeklyDay>,
+}
+
+/// 周结算逻辑（纯函数，可测试）。
+/// 返回 (是否达标, 应发奖励, 结算后的 streak)。
+/// - `already = true`：本周已结算过 → 不再发奖，也不改动 streak（幂等，仅查看）。
+/// - `already = false` 且达标：发奖 100*(streak+1)，连续周数 +1（满 7 周清零）。
+/// - `already = false` 且未达标：连续周数清零，不发奖。
+fn weekly_settle_logic(count: u32, streak: u32, already: bool) -> (bool, u32, u32) {
+    let eligible = count >= 5;
+    if already {
+        (eligible, 0, streak)
+    } else if eligible {
+        let mut new_streak = streak + 1;
+        if new_streak == 7 {
+            new_streak = 0;
+        }
+        (true, 100 * (streak + 1), new_streak)
+    } else {
+        (false, 0, 0)
+    }
 }
 
 #[tauri::command]
@@ -504,26 +527,24 @@ fn check_weekly(app: tauri::AppHandle) -> WeeklyResult {
         }
     }
 
+    let monday_str = monday_of_current_week().format("%Y-%m-%d").to_string();
     let mut config = load_config(&app);
-    let (eligible, reward) = if count >= 5 {
-        let reward = 100 * (config.streak + 1);
-        config.streak += 1;
-        if config.streak == 7 {
-            config.streak = 0;
-        }
+    let already = config.weekly_settled_week == monday_str;
+    let (eligible, reward, new_streak) = weekly_settle_logic(count, config.streak, already);
+    // 本周尚未结算时才改动状态并持久化；已结算则仅返回当前查看结果，不重复发奖
+    if !already {
+        config.streak = new_streak;
         config.yuan_shi += reward;
-        (true, reward)
-    } else {
-        config.streak = 0;
-        (false, 0)
-    };
-    save_config(&app, &config);
+        config.weekly_settled_week = monday_str;
+        save_config(&app, &config);
+    }
 
     WeeklyResult {
         count,
         eligible,
         reward,
         streak: config.streak,
+        yuan_shi: config.yuan_shi,
         days,
     }
 }
@@ -603,6 +624,9 @@ struct AppConfig {
     yuan_shi: u32,
     #[serde(default)]
     streak: u32,
+    /// 已结算的自然周（周一 YYYY-MM-DD）：保证周奖励每自然周只结算一次
+    #[serde(default)]
+    weekly_settled_week: String,
     /// 闹钟模式：每隔 alarm_interval 秒弹出置顶提醒（默认 10 分钟）
     #[serde(default)]
     alarm_interval: u64,
@@ -619,6 +643,7 @@ impl Default for AppConfig {
             opacity: 0.92,
             yuan_shi: 0,
             streak: 0,
+            weekly_settled_week: String::new(),
             alarm_interval: 600,
             alarm_duration: 15,
         }
@@ -801,10 +826,62 @@ fn version_gt(a: &str, b: &str) -> bool {
     false
 }
 
+/// 更新检查的内存缓存：命中且未过期则直接返回，避免每次点击都请求 Gitee、
+/// 触发匿名接口限流。
+#[derive(Clone)]
+struct UpdateCache {
+    at: Instant,
+    result: Result<UpdateInfo, String>,
+}
+
+/// 单例缓存，进程生命周期内共享。
+static UPDATE_CACHE: OnceLock<Mutex<Option<UpdateCache>>> = OnceLock::new();
+
+/// 成功结果缓存时长：10 分钟内重复检查直接命中缓存。
+const UPDATE_CACHE_TTL_OK: Duration = Duration::from_secs(600);
+/// 失败结果缓存时长：仅 1 分钟，避免网络瞬断/404 等被长期误缓存，
+/// 同时防止连续失败时高频重试。
+const UPDATE_CACHE_TTL_ERR: Duration = Duration::from_secs(60);
+
+fn update_cache() -> &'static Mutex<Option<UpdateCache>> {
+    UPDATE_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// 依据结果类型返回对应 TTL：成功长缓存，失败短冷却。
+fn cache_ttl(result_is_ok: bool) -> Duration {
+    if result_is_ok {
+        UPDATE_CACHE_TTL_OK
+    } else {
+        UPDATE_CACHE_TTL_ERR
+    }
+}
+
+/// 缓存是否仍有效（未过期）。纯函数，便于测试。
+fn cache_fresh(at: Instant, result_is_ok: bool) -> bool {
+    at.elapsed() < cache_ttl(result_is_ok)
+}
+
 /// 通过 Gitee Release API 检查更新：tag_name 作为最新版本号，
-/// 从附件中选取安装包下载地址。
+/// 从附件中选取安装包下载地址。结果带 TTL 缓存以降低撞限流概率。
 #[tauri::command]
 fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    // 命中有效缓存则直接返回（含失败缓存，实现短冷却）
+    if let Some(cached) = update_cache().lock().unwrap().clone() {
+        if cache_fresh(cached.at, cached.result.is_ok()) {
+            return cached.result;
+        }
+    }
+
+    let fetched = fetch_update_info(&app);
+    *update_cache().lock().unwrap() = Some(UpdateCache {
+        at: Instant::now(),
+        result: fetched.clone(),
+    });
+    fetched
+}
+
+/// 实际向 Gitee 发起请求并解析版本信息（不缓存）。
+fn fetch_update_info(app: &tauri::AppHandle) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
     let url = format!(
         "https://gitee.com/api/v5/repos/{}/{}/releases/latest",
@@ -889,8 +966,34 @@ fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 免安装版自替换：旧 exe 改名 .exe.old → 写入新 exe → 启动新进程退出。
-/// 旧进程退出后 .old 可删（下次启动时清理）。
+/// 免安装版延迟替换脚本（cmd）。
+/// 在主进程退出后执行：等待解除文件占用 → 旧 exe 改名 .old → 写入新版 →
+/// 成功后启动新版并清理，失败则回滚为原程序。非 Windows 不生成。
+#[allow(dead_code)] // 仅 Windows 分支使用，Linux 上保留供测试
+fn portable_update_script() -> &'static str {
+    r#"@echo off
+setlocal
+if "%~1"=="" exit /b 1
+set "TGT=%~f1"
+set "NEW=%~f2"
+if not exist "%NEW%" exit /b 1
+timeout /t 2 /nobreak >nul
+ren "%TGT%" "%~n1.old" >nul 2>&1
+copy /y "%NEW%" "%TGT%" >nul 2>&1
+if exist "%TGT%" (
+  del "%TGT%.old" >nul 2>&1
+  start "" "%TGT%"
+) else (
+  ren "%TGT%.old" "%~n1" >nul 2>&1
+)
+del "%NEW%" >nul 2>&1
+endlocal
+exit /b 0
+"#
+}
+
+/// 免安装版自替换：不直接在运行中的旧进程里改名/覆盖（会被文件锁拒绝），
+/// 而是把替换动作交给独立 bat 脚本延迟到主进程退出后执行。
 fn self_replace_portable(
     app: &tauri::AppHandle,
     url: &str,
@@ -901,19 +1004,36 @@ fn self_replace_portable(
     let new_exe = tmp.join("portable.exe");
     download_to(url, &new_exe)?;
 
-    let old_exe = exe.with_extension("exe.old");
-    std::fs::rename(exe, &old_exe).map_err(|e| format!("重命名当前程序失败：{}", e))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-    if let Err(e) = std::fs::copy(&new_exe, exe) {
-        // 回滚，保持原程序可运行
-        let _ = std::fs::rename(&old_exe, exe);
-        return Err(format!("写入新版本失败：{}", e));
+        let bat = tmp.join("update-portable.bat");
+        std::fs::write(&bat, portable_update_script())
+            .map_err(|e| format!("写入更新脚本失败：{}", e))?;
+
+        std::process::Command::new("cmd")
+            .args([
+                "/c",
+                &bat.to_string_lossy(),
+                &exe.to_string_lossy(),
+                &new_exe.to_string_lossy(),
+            ])
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .spawn()
+            .map_err(|e| format!("启动更新脚本失败：{}", e))?;
+
+        // 主进程立即让位，脚本在无占用时完成替换并拉起新版本
+        app.exit(0);
+        Ok(())
     }
-
-    std::process::Command::new(exe).spawn().ok();
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    app.exit(0);
-    Ok(())
+    #[cfg(not(windows))]
+    {
+        let _ = (app, exe);
+        Err("免安装版自更新仅支持 Windows".to_string())
+    }
 }
 
 /// 安装版：下载 setup 静默安装，安装完成后重启新版本
@@ -1277,6 +1397,46 @@ mod tests {
     }
 
     #[test]
+    fn portable_update_script_has_critical_steps() {
+        let s = portable_update_script();
+        // 关键替换步骤
+        assert!(s.contains("ren \"%TGT%\" \"%~n1.old\""));
+        assert!(s.contains("copy /y \"%NEW%\" \"%TGT%\""));
+        // 成功后启动新版 & 清理旧版
+        assert!(s.contains("start \"\" \"%TGT%\""));
+        assert!(s.contains("del \"%TGT%.old\""));
+        // 失败回滚为原程序
+        assert!(s.contains("ren \"%TGT%.old\" \"%~n1\""));
+        // 等待解除占用 / 隐藏窗口
+        assert!(s.contains("timeout /t 2 /nobreak"));
+    }
+
+    #[test]
+    fn weekly_settle_is_idempotent_across_calls() {
+        // 第一次结算（本周未结算）：达标发奖 100*(streak+1)，连续周数 +1
+        let (e1, r1, s1) = weekly_settle_logic(5, 2, false);
+        assert!(e1);
+        assert_eq!(r1, 300);
+        assert_eq!(s1, 3);
+
+        // 同周再次查看：不再发奖，streak 保持不变（幂等）
+        let (e2, r2, s2) = weekly_settle_logic(5, s1, true);
+        assert!(e2);
+        assert_eq!(r2, 0);
+        assert_eq!(s2, 3);
+
+        // 未达标当周：清零连续周数；之后同周不再重复改动
+        let (e3, r3, s3) = weekly_settle_logic(3, 5, false);
+        assert!(!e3);
+        assert_eq!(r3, 0);
+        assert_eq!(s3, 0);
+        let (e4, r4, s4) = weekly_settle_logic(3, s3, true);
+        assert!(!e4);
+        assert_eq!(r4, 0);
+        assert_eq!(s4, 0);
+    }
+
+    #[test]
     fn settle_reward_values() {
         let sections = |n: u32| -> std::collections::HashMap<String, String> {
             let mut m = std::collections::HashMap::new();
@@ -1419,6 +1579,26 @@ mod tests {
         assert!(!version_gt("0.1.1", "0.1.1"));
         assert!(!version_gt("0.1.0", "0.1.1"));
         assert!(!version_gt("0.0.9", "0.1.0"));
+    }
+
+    #[test]
+    fn update_cache_ttl_differs_by_result_type() {
+        // 成功结果长缓存（10 分钟）
+        assert_eq!(cache_ttl(true), Duration::from_secs(600));
+        // 失败结果短冷却（1 分钟）
+        assert_eq!(cache_ttl(false), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn update_cache_is_fresh_within_ttl() {
+        // 刚写入的缓存有效
+        let ok_at = Instant::now();
+        assert!(cache_fresh(ok_at, true));
+        assert!(cache_fresh(ok_at, false));
+        // 用绝对远古时间模拟过期
+        let very_old = Instant::now() - Duration::from_secs(3600);
+        assert!(!cache_fresh(very_old, true));
+        assert!(!cache_fresh(very_old, false));
     }
 }
 

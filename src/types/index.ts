@@ -41,5 +41,7 @@ export interface WeeklyResult {
   eligible: boolean;
   reward: number;
   streak: number;
+  /** 结算后的权威原石余额（以后端为准） */
+  yuan_shi: number;
   days: WeeklyDay[];
 }

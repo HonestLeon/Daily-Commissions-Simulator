@@ -248,7 +248,8 @@ export const useNoteStore = create<NoteState>((set, get) => ({
 
   checkWeekly: async () => {
     const result: WeeklyResult = await invoke("check_weekly");
-    set({ streak: result.streak, yuanShi: get().yuanShi + result.reward });
+    // 原石余额以后端结算后的权威值为准，避免本地累加造成漂移
+    set({ streak: result.streak, yuanShi: result.yuan_shi });
     return result;
   },
 

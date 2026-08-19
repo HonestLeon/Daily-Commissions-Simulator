@@ -58,6 +58,17 @@ function App() {
     });
   }, []);
 
+  // 回到前台时以后端为准同步一次原石余额，兜底其他场景造成的短线漂移
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload }) => {
+      if (payload) getBalance();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleCheckUpdate = async () => {
     setUpdateState({ phase: "checking" });
     try {
