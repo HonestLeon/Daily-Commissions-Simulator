@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasio/bonsaidb/main/tauri.conf.schema.json",
   "productName": "轻量便签",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.liurr.lightweight-sticky-notes",
   "build": {
     "beforeDevCommand": "npm run dev",

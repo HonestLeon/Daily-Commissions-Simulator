@@ -531,11 +531,14 @@ fn check_weekly(app: tauri::AppHandle) -> WeeklyResult {
     let mut config = load_config(&app);
     let already = config.weekly_settled_week == monday_str;
     let (eligible, reward, new_streak) = weekly_settle_logic(count, config.streak, already);
-    // 本周尚未结算时才改动状态并持久化；已结算则仅返回当前查看结果，不重复发奖
     if !already {
         config.streak = new_streak;
         config.yuan_shi += reward;
-        config.weekly_settled_week = monday_str;
+        // 方案 B：只有“达标发奖”才锁定本周（防止同周重复发奖）；
+        // 未达标只清零连续周数、不锁定，本周后续补达标仍可获得奖励。
+        if eligible {
+            config.weekly_settled_week = monday_str;
+        }
         save_config(&app, &config);
     }
 
@@ -978,13 +981,13 @@ set "TGT=%~f1"
 set "NEW=%~f2"
 if not exist "%NEW%" exit /b 1
 timeout /t 2 /nobreak >nul
-ren "%TGT%" "%~n1.old" >nul 2>&1
+ren "%TGT%" "%~nx1.old" >nul 2>&1
 copy /y "%NEW%" "%TGT%" >nul 2>&1
 if exist "%TGT%" (
   del "%TGT%.old" >nul 2>&1
   start "" "%TGT%"
 ) else (
-  ren "%TGT%.old" "%~n1" >nul 2>&1
+  ren "%TGT%.old" "%~nx1" >nul 2>&1
 )
 del "%NEW%" >nul 2>&1
 endlocal
@@ -1399,16 +1402,21 @@ mod tests {
     #[test]
     fn portable_update_script_has_critical_steps() {
         let s = portable_update_script();
-        // 关键替换步骤
-        assert!(s.contains("ren \"%TGT%\" \"%~n1.old\""));
+        // 关键替换步骤（后缀统一为 .exe.old）
+        assert!(s.contains("ren \"%TGT%\" \"%~nx1.old\""));
         assert!(s.contains("copy /y \"%NEW%\" \"%TGT%\""));
-        // 成功后启动新版 & 清理旧版
+        // 成功后启动新版 & 清理旧版（删除路径与改名产物一致）
         assert!(s.contains("start \"\" \"%TGT%\""));
         assert!(s.contains("del \"%TGT%.old\""));
-        // 失败回滚为原程序
-        assert!(s.contains("ren \"%TGT%.old\" \"%~n1\""));
+        // 失败回滚为原程序（REN 目标为不含路径的纯文件名）
+        assert!(s.contains("ren \"%TGT%.old\" \"%~nx1\""));
         // 等待解除占用 / 隐藏窗口
         assert!(s.contains("timeout /t 2 /nobreak"));
+        // 后缀一致性：改名产物、删除、回滚必须都指向 .exe.old（防 xxx.old 残留/回滚失效）
+        let old_refs = s.matches("%TGT%.old").count();
+        assert!(old_refs >= 2, "删除与回滚均应引用 .exe.old，实际 {old_refs} 处");
+        assert!(s.contains("%~nx1.old"), "改名产物应为 <name>.exe.old");
+        assert!(!s.contains("%~n1.old"), "不得再使用无扩展名的 <name>.old");
     }
 
     #[test]
