@@ -1,6 +1,6 @@
 [package]
 name = "lightweight-sticky-notes"
-version = "0.2.1"
+version = "0.2.2"
 description = "轻量半透明 Markdown 便签"
 authors = ["HonestLeon"]
 edition = "2021"
