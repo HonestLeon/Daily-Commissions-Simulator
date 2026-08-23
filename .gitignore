@@ -40,6 +40,4 @@ releases/
 .workbuddy/
 
 # Source images (icon sources, not tracked)
-/图标.png
-/原石原图.png
-/砺行修远.png
+pictures/

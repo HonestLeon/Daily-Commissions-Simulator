@@ -623,7 +623,6 @@ fn load_note(app: tauri::AppHandle, id: String) -> Result<String, String> {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AppConfig {
     close_to_tray: bool,
-    dark_mode: bool,
     opacity: f32,
     #[serde(default)]
     yuan_shi: u32,
@@ -641,13 +640,15 @@ struct AppConfig {
     /// 是否启用整窗背景图皮肤（仅浅色模式生效）
     #[serde(default)]
     skin_enabled: bool,
+    /// 界面颜色主题（light / sky / sakura / green，浅色底深色字）
+    #[serde(default)]
+    theme: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             close_to_tray: true,
-            dark_mode: false,
             opacity: 0.92,
             yuan_shi: 0,
             streak: 0,
@@ -655,6 +656,7 @@ impl Default for AppConfig {
             alarm_interval: 600,
             alarm_duration: 15,
             skin_enabled: false,
+            theme: String::from("light"),
         }
     }
 }
@@ -675,6 +677,7 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
         AppConfig::default()
     };
     normalize_alarm_config(&mut config);
+    normalize_theme(&mut config);
     config
 }
 
@@ -686,6 +689,20 @@ fn normalize_alarm_config(config: &mut AppConfig) {
     }
     if config.alarm_duration == 0 {
         config.alarm_duration = AppConfig::default().alarm_duration;
+    }
+}
+
+/// 合法的界面颜色主题
+const APP_THEMES: [&str; 4] = ["light", "sky", "sakura", "green"];
+
+fn is_valid_theme(theme: &str) -> bool {
+    APP_THEMES.contains(&theme)
+}
+
+/// 规范化颜色主题：非法或缺失（空串）时回退到默认 light
+fn normalize_theme(config: &mut AppConfig) {
+    if !is_valid_theme(&config.theme) {
+        config.theme = AppConfig::default().theme;
     }
 }
 
@@ -718,18 +735,6 @@ fn set_close_behavior(app: tauri::AppHandle, close_to_tray: bool) {
 }
 
 #[tauri::command]
-fn get_dark_mode(app: tauri::AppHandle) -> bool {
-    load_config(&app).dark_mode
-}
-
-#[tauri::command]
-fn set_dark_mode(app: tauri::AppHandle, dark_mode: bool) {
-    let mut config = load_config(&app);
-    config.dark_mode = dark_mode;
-    save_config(&app, &config);
-}
-
-#[tauri::command]
 fn get_opacity(app: tauri::AppHandle) -> f32 {
     load_config(&app).opacity
 }
@@ -738,6 +743,21 @@ fn get_opacity(app: tauri::AppHandle) -> f32 {
 fn set_opacity(app: tauri::AppHandle, opacity: f32) {
     let mut config = load_config(&app);
     config.opacity = opacity;
+    save_config(&app, &config);
+}
+
+#[tauri::command]
+fn get_theme(app: tauri::AppHandle) -> String {
+    load_config(&app).theme
+}
+
+#[tauri::command]
+fn set_theme(app: tauri::AppHandle, theme: String) {
+    if !is_valid_theme(&theme) {
+        return;
+    }
+    let mut config = load_config(&app);
+    config.theme = theme;
     save_config(&app, &config);
 }
 
@@ -1490,6 +1510,33 @@ mod tests {
     }
 
     #[test]
+    fn normalize_theme_falls_back_on_invalid() {
+        // 非法主题（如 "dark"）→ 回退 light
+        let mut c = AppConfig::default();
+        c.theme = String::from("dark");
+        normalize_theme(&mut c);
+        assert_eq!(c.theme, "light");
+    }
+
+    #[test]
+    fn normalize_theme_keeps_valid_value() {
+        // 合法主题保持不变
+        let mut c = AppConfig::default();
+        c.theme = String::from("sky");
+        normalize_theme(&mut c);
+        assert_eq!(c.theme, "sky");
+    }
+
+    #[test]
+    fn normalize_theme_falls_back_on_empty() {
+        // 空串（旧配置缺失字段时 serde 填空串）→ 回退 light
+        let mut c = AppConfig::default();
+        c.theme = String::new();
+        normalize_theme(&mut c);
+        assert_eq!(c.theme, "light");
+    }
+
+    #[test]
     fn portable_update_script_has_critical_steps() {
         let s = portable_update_script();
         // 关键替换步骤（后缀统一为 .exe.old）
@@ -1727,10 +1774,10 @@ pub fn run() {
             disable_autostart_cmd,
             is_autostart_enabled_cmd,
             cleanup_old_autostart_cmd,
-            get_dark_mode,
-            set_dark_mode,
             get_opacity,
             set_opacity,
+            get_theme,
+            set_theme,
             get_alarm_interval,
             set_alarm_interval,
             get_alarm_duration,

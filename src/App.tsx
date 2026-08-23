@@ -14,16 +14,15 @@ function App() {
   const {
     fetchNotes,
     fetchCloseBehavior,
-    fetchDarkMode,
     fetchOpacity,
     fetchAlarmConfig,
     fetchSkin,
+    fetchTheme,
     initDaily,
     getBalance,
     checkWeekly,
     opacity,
     skinImage,
-    darkMode,
   } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -49,10 +48,10 @@ function App() {
       // 2) Load notes, config, balance.
       fetchNotes();
       fetchCloseBehavior();
-      fetchDarkMode();
       fetchOpacity();
       fetchAlarmConfig();
       fetchSkin();
+      fetchTheme();
       getBalance();
     };
     boot();
@@ -161,13 +160,6 @@ function App() {
         s.cyclePinMode();
         return;
       }
-
-      // Ctrl/Cmd + Shift + L → toggle dark mode
-      if (e.shiftKey && e.code === "KeyL") {
-        e.preventDefault();
-        s.setDarkMode(!s.darkMode);
-        return;
-      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -176,7 +168,7 @@ function App() {
 
   return (
     <div className="app" style={{ "--app-bg-opacity": opacity } as React.CSSProperties}>
-      {skinImage && !darkMode && (
+      {skinImage && (
         <>
           <div
             className="app-skin"

@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { NoteMeta, InitDailyResult, WeeklyResult, PinMode } from "../types";
+import type { NoteMeta, InitDailyResult, WeeklyResult, PinMode, AppTheme } from "../types";
+
+const APP_THEMES = ["light", "sky", "sakura", "green"] as const;
+
+function isAppTheme(value: string): value is AppTheme {
+  return (APP_THEMES as readonly string[]).includes(value);
+}
 
 // Module-level timer IDs for alarm mode
 let alarmIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -69,7 +75,6 @@ interface NoteState {
   activeId: string | null;
   pinMode: PinMode;
   opacity: number;
-  darkMode: boolean;
   closeToTray: boolean | null;
   yuanShi: number;
   streak: number;
@@ -85,8 +90,6 @@ interface NoteState {
   setPinMode: (mode: PinMode) => Promise<void>;
   setOpacity: (value: number) => void;
   fetchOpacity: () => Promise<void>;
-  fetchDarkMode: () => Promise<void>;
-  setDarkMode: (dark: boolean) => Promise<void>;
   fetchCloseBehavior: () => Promise<void>;
   setCloseBehavior: (closeToTray: boolean) => Promise<void>;
   checkWeekly: () => Promise<WeeklyResult>;
@@ -99,6 +102,9 @@ interface NoteState {
   fetchSkin: () => Promise<void>;
   importSkin: (dataUrl: string) => Promise<void>;
   removeSkin: () => Promise<void>;
+  theme: AppTheme;
+  fetchTheme: () => Promise<void>;
+  setTheme: (theme: AppTheme) => Promise<void>;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -106,7 +112,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   activeId: null,
   pinMode: "normal",
   opacity: 0.92,
-  darkMode: false,
   closeToTray: null,
   yuanShi: 0,
   streak: 0,
@@ -114,15 +119,19 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   alarmDuration: 15,
   skinImage: "",
   skinActive: false,
+  theme: "light",
 
   fetchNotes: async () => {
     try {
       const notes: NoteMeta[] = await invoke("list_notes");
       set({ notes });
       if (notes.length > 0 && !get().activeId) {
-        const lastId = localStorage.getItem("last-active-note");
-        const restored = lastId && notes.some((n) => n.id === lastId);
-        set({ activeId: restored ? lastId : notes[0].id });
+        // 默认打开当天的委托便签（created_at 为 YYYY-MM-DD 前缀）
+        const now = new Date();
+        const today =
+          `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+        const todayNote = notes.find((n) => n.created_at.startsWith(today));
+        set({ activeId: todayNote ? todayNote.id : notes[0].id });
       }
     } catch (e) {
       console.error("Failed to fetch notes:", e);
@@ -168,7 +177,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   },
 
   setActive: (id: string) => {
-    localStorage.setItem("last-active-note", id);
     set({ activeId: id });
   },
 
@@ -212,26 +220,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       set({ opacity });
     } catch {
       // keep default 0.92
-    }
-  },
-
-  fetchDarkMode: async () => {
-    try {
-      const dark: boolean = await invoke("get_dark_mode");
-      set({ darkMode: dark });
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-    } catch {
-      // keep default light
-    }
-  },
-
-  setDarkMode: async (dark: boolean) => {
-    try {
-      await invoke("set_dark_mode", { darkMode: dark });
-      set({ darkMode: dark });
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-    } catch (e) {
-      console.error("Failed to set dark mode:", e);
     }
   },
 
@@ -338,9 +326,40 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       console.error("Failed to remove skin:", e);
     }
   },
+
+  // 颜色主题：浅色底深色字（light / sky / sakura / green）
+  fetchTheme: async () => {
+    try {
+      const theme = await invoke<string>("get_theme");
+      const valid = isAppTheme(theme) ? theme : "light";
+      set({ theme: valid });
+      applyThemeMarker(valid);
+    } catch (e) {
+      console.error("Failed to fetch theme:", e);
+    }
+  },
+
+  setTheme: async (theme: AppTheme) => {
+    try {
+      await invoke("set_theme", { theme });
+      set({ theme });
+      applyThemeMarker(theme);
+    } catch (e) {
+      console.error("Failed to set theme:", e);
+    }
+  },
 }));
 
 // 供 CSS 区分"是否开启皮肤"（仅浅色模式下的面板透明度由 CSS 使用该标记）
 function applySkinMarker(active: boolean) {
   document.documentElement.dataset.skin = active ? "on" : "off";
+}
+
+// 供 CSS 按主题覆盖设计令牌（面板底色 / 强调色 / 蒙版色）
+function applyThemeMarker(theme: AppTheme) {
+  document.documentElement.dataset.theme = theme;
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
 }

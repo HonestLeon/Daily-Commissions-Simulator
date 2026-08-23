@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNoteStore } from "../stores/noteStore";
+import type { AppTheme } from "../types";
+
+const THEME_OPTIONS: { id: AppTheme; name: string; bg: string; accent: string }[] = [
+  { id: "light", name: "默认", bg: "#ffffff", accent: "#4a9eff" },
+  { id: "sky", name: "天空蓝", bg: "#d2e2f6", accent: "#3d8bfd" },
+  { id: "sakura", name: "樱花粉", bg: "#f6dde8", accent: "#d95f97" },
+  { id: "green", name: "护眼绿", bg: "#d2e8d0", accent: "#4a9e6f" },
+];
 
 interface Props {
   open: boolean;
@@ -10,19 +18,19 @@ interface Props {
 export default function SettingsPanel({ open, onClose }: Props) {
   const {
     closeToTray,
-    darkMode,
     alarmInterval,
     alarmDuration,
     opacity,
     skinImage,
     skinActive,
+    theme,
     setCloseBehavior,
-    setDarkMode,
     setAlarmInterval,
     setAlarmDuration,
     setOpacity,
     importSkin,
     removeSkin,
+    setTheme,
   } = useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,10 +56,6 @@ export default function SettingsPanel({ open, onClose }: Props) {
       window.alert(typeof e === "string" ? e : "切换开机自启失败");
       console.error("Failed to toggle autostart:", e);
     }
-  };
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
   };
 
   const handleSkinFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,24 +108,36 @@ export default function SettingsPanel({ open, onClose }: Props) {
             </div>
           </button>
 
-          {/* Dark mode toggle */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={darkMode}
-            className="settings-row"
-            onClick={toggleDarkMode}
+          {/* Theme selection */}
+          <div className="settings-section-title">主题</div>
+          <div
+            className="theme-options"
+            role="radiogroup"
+            aria-label="界面主题"
           >
-            <div className="settings-label">
-              <div className="settings-label-title">暗色模式</div>
-              <div className="settings-label-desc">
-                切换深色/浅色主题外观
-              </div>
-            </div>
-            <div className={`settings-toggle ${darkMode ? "on" : "off"}`}>
-              <div className="settings-toggle-knob" />
-            </div>
-          </button>
+            {THEME_OPTIONS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={theme === t.id}
+                className={`theme-card${theme === t.id ? " active" : ""}`}
+                onClick={() => setTheme(t.id)}
+              >
+                <div
+                  className="theme-card-preview"
+                  style={{ background: t.bg }}
+                >
+                  <span className="theme-card-sample">委托 Aa</span>
+                  <span
+                    className="theme-card-bar"
+                    style={{ background: t.accent }}
+                  />
+                </div>
+                <span className="theme-card-name">{t.name}</span>
+              </button>
+            ))}
+          </div>
 
           {/* Window opacity */}
           <div className="settings-section-title">显示</div>

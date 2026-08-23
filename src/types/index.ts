@@ -13,6 +13,9 @@ export type ViewMode = "edit" | "preview" | "split";
 /** 标题栏置顶模式：pin=始终置顶；alarm=定时置顶提醒；normal=正常 */
 export type PinMode = "pin" | "alarm" | "normal";
 
+/** 颜色主题：light=默认浅色；sky/sakura/green=彩色主题 */
+export type AppTheme = "light" | "sky" | "sakura" | "green";
+
 export interface UpdateInfo {
   current_version: string;
   latest_version: string;
