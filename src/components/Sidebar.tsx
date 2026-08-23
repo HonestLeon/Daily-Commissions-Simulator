@@ -10,6 +10,7 @@ export default function Sidebar() {
     x: number;
     y: number;
     above: boolean;
+    right: boolean;
   } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -27,10 +28,21 @@ export default function Sidebar() {
 
   const handleRightClick = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
-    const estimatedHeight = 90;
-    const above = e.clientY + estimatedHeight > window.innerHeight;
-    setContextMenu({ id, x: e.clientX, y: e.clientY, above });
+    const MENU_W = 128;
+    const MENU_H = 90;
+    const above = e.clientY + MENU_H > window.innerHeight;
+    const right = e.clientX + MENU_W > window.innerWidth;
+    setContextMenu({ id, x: e.clientX, y: e.clientY, above, right });
   };
+
+  // Escape 关闭右键菜单
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const handleDelete = async (id: string) => {
     await deleteNote(id);
@@ -131,7 +143,9 @@ export default function Sidebar() {
           <div
             className="context-menu"
             style={{
-              left: contextMenu.x,
+              ...(contextMenu.right
+                ? { right: window.innerWidth - contextMenu.x }
+                : { left: contextMenu.x }),
               ...(contextMenu.above
                 ? { bottom: window.innerHeight - contextMenu.y }
                 : { top: contextMenu.y }),

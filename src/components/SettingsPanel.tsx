@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNoteStore } from "../stores/noteStore";
 
@@ -8,9 +8,24 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const { closeToTray, darkMode, alarmInterval, alarmDuration, setCloseBehavior, setDarkMode, setAlarmInterval, setAlarmDuration } =
-    useNoteStore();
+  const {
+    closeToTray,
+    darkMode,
+    alarmInterval,
+    alarmDuration,
+    opacity,
+    skinImage,
+    skinActive,
+    setCloseBehavior,
+    setDarkMode,
+    setAlarmInterval,
+    setAlarmDuration,
+    setOpacity,
+    importSkin,
+    removeSkin,
+  } = useNoteStore();
   const [autoStart, setAutoStart] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -39,6 +54,24 @@ export default function SettingsPanel({ open, onClose }: Props) {
     setDarkMode(!darkMode);
   };
 
+  const handleSkinFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 允许重复选择同一文件
+    if (!file) return;
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      await importSkin(dataUrl);
+    } catch (err) {
+      window.alert(typeof err === "string" ? err : "导入皮肤失败");
+      console.error("Failed to import skin:", err);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -53,7 +86,13 @@ export default function SettingsPanel({ open, onClose }: Props) {
         </div>
         <div className="settings-body">
           {/* Auto-start toggle */}
-          <label className="settings-row" onClick={toggleAutoStart}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoStart}
+            className="settings-row"
+            onClick={toggleAutoStart}
+          >
             <div className="settings-label">
               <div className="settings-label-title">开机自启动</div>
               <div className="settings-label-desc">
@@ -63,10 +102,16 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className={`settings-toggle ${autoStart ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
             </div>
-          </label>
+          </button>
 
           {/* Dark mode toggle */}
-          <label className="settings-row" onClick={toggleDarkMode}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={darkMode}
+            className="settings-row"
+            onClick={toggleDarkMode}
+          >
             <div className="settings-label">
               <div className="settings-label-title">暗色模式</div>
               <div className="settings-label-desc">
@@ -76,9 +121,75 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className={`settings-toggle ${darkMode ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
             </div>
+          </button>
+
+          {/* Window opacity */}
+          <div className="settings-section-title">显示</div>
+          <label className="settings-row">
+            <div className="settings-label">
+              <div className="settings-label-title">
+                透明度（{Math.round(opacity * 100)}%）
+              </div>
+              <div className="settings-label-desc">
+                窗口整体不透明度（25% ~ 100%）
+              </div>
+            </div>
+            <input
+              type="range"
+              className="settings-range"
+              min="0.25"
+              max="1"
+              step="0.01"
+              value={opacity}
+              onChange={(e) => setOpacity(Number(e.target.value))}
+              aria-label="窗口透明度"
+            />
           </label>
 
-          <label
+          {/* Skin section */}
+          <div className="settings-section-title">皮肤</div>
+          <div className="settings-row">
+            <div className="settings-label">
+              <div className="settings-label-title">导入皮肤</div>
+              <div className="settings-label-desc">
+                整窗背景图（仅浅色模式生效，支持 PNG / JPG / WebP，≤8MB）
+              </div>
+            </div>
+            {skinImage && (
+              <div
+                className="settings-skin-preview"
+                style={{ backgroundImage: `url(${skinImage})` }}
+              />
+            )}
+          </div>
+          <div className="settings-row">
+            <button
+              className="settings-action-btn"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              导入 / 更换
+            </button>
+            {skinActive && (
+              <button
+                className="settings-action-btn danger"
+                onClick={removeSkin}
+              >
+                移除皮肤
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+            style={{ display: "none" }}
+            onChange={handleSkinFile}
+          />
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!closeToTray}
             className="settings-row"
             onClick={() => setCloseBehavior(!closeToTray)}
           >
@@ -93,7 +204,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className={`settings-toggle ${closeToTray ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
             </div>
-          </label>
+          </button>
 
           {/* Alarm mode params */}
           <div className="settings-section-title">闹钟提醒</div>

@@ -90,6 +90,17 @@ export default function LixingDialog({ result, onClose }: Props) {
               </>
             )}
           </div>
+
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--text-muted)",
+              marginTop: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            提示：任一模块只有空委托（未填写实际任务）时，不计入该模块完成，也不会计入"三全完成"天数。
+          </p>
         </div>
       </div>
     </>

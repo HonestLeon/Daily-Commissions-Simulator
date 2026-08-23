@@ -5,6 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use chrono::{Local, Datelike};
 use tauri::Manager;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // ── Daily commission ──
 
@@ -193,9 +194,10 @@ fn ensure_task_trailing_space(content: &str) -> String {
     out
 }
 
-/// A module is complete when every non-blank checkbox is checked, or when it
-/// has no non-blank checkboxes at all (empty/blank-only module counts as
-/// complete).
+/// A module is complete only when it has at least one non-blank checkbox and
+/// all of its non-blank checkboxes are checked. A module with no non-blank
+/// checkboxes (empty / blank-only) is NOT complete — empty commissions don't
+/// count toward fulfillment, so users are encouraged to fill in tasks.
 fn section_complete(section: &str) -> bool {
     let boxes: Vec<&str> = section
         .lines()
@@ -205,7 +207,7 @@ fn section_complete(section: &str) -> bool {
         })
         .collect();
     if boxes.is_empty() {
-        return true;
+        return false;
     }
     boxes.iter().all(|l| {
         l.starts_with("- [x]")
@@ -636,6 +638,9 @@ struct AppConfig {
     /// 闹钟模式：置顶显示的时长（秒，最长 60）
     #[serde(default)]
     alarm_duration: u64,
+    /// 是否启用整窗背景图皮肤（仅浅色模式生效）
+    #[serde(default)]
+    skin_enabled: bool,
 }
 
 impl Default for AppConfig {
@@ -649,6 +654,7 @@ impl Default for AppConfig {
             weekly_settled_week: String::new(),
             alarm_interval: 600,
             alarm_duration: 15,
+            skin_enabled: false,
         }
     }
 }
@@ -756,6 +762,90 @@ fn get_alarm_duration(app: tauri::AppHandle) -> u64 {
 fn set_alarm_duration(app: tauri::AppHandle, seconds: u64) {
     let mut config = load_config(&app);
     config.alarm_duration = seconds.clamp(1, 60);
+    save_config(&app, &config);
+}
+
+// ── Skin (整窗背景图皮肤，仅浅色模式生效) ──
+
+/// 皮肤最大字节数：8 MB
+const SKIN_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// 皮肤存储目录：app_data_dir()/skins/，活动皮肤固定存为 `active`（无扩展名）
+fn skins_dir(app: &tauri::AppHandle) -> PathBuf {
+    let path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("skins");
+    fs::create_dir_all(&path).ok();
+    path
+}
+
+fn skin_path(app: &tauri::AppHandle) -> PathBuf {
+    skins_dir(app).join("active")
+}
+
+/// 依据文件头魔数识别图片格式，返回对应 mime；无法识别返回 None。
+/// 支持 PNG / JPEG / WebP。
+fn detect_skin_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.len() >= 12
+        && &bytes[0..4] == b"RIFF"
+        && &bytes[8..12] == b"WEBP"
+    {
+        return Some("image/webp");
+    }
+    None
+}
+
+fn encode_skin_data_url(bytes: &[u8], mime: &str) -> String {
+    format!("data:{};base64,{}", mime, BASE64.encode(bytes))
+}
+
+#[tauri::command]
+fn get_skin(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    if !load_config(&app).skin_enabled {
+        return Ok(None);
+    }
+    let path = skin_path(&app);
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let mime = match detect_skin_mime(&bytes) {
+        Some(m) => m,
+        None => return Ok(None),
+    };
+    Ok(Some(encode_skin_data_url(&bytes, mime)))
+}
+
+#[tauri::command]
+fn save_skin(app: tauri::AppHandle, data_url: String) -> Result<String, String> {
+    let payload = data_url
+        .split_once(',')
+        .map(|(_, b64)| b64.to_string())
+        .unwrap_or(data_url);
+    let bytes = BASE64.decode(payload.as_bytes()).map_err(|_| "图片数据解析失败".to_string())?;
+    if bytes.len() > SKIN_MAX_BYTES {
+        return Err("图片过大（需 ≤ 8MB）".to_string());
+    }
+    let mime = detect_skin_mime(&bytes)
+        .ok_or_else(|| "不支持的图片格式（仅支持 PNG / JPG / WebP）".to_string())?;
+
+    fs::write(skin_path(&app), &bytes).map_err(|e| e.to_string())?;
+    let mut config = load_config(&app);
+    config.skin_enabled = true;
+    save_config(&app, &config);
+    Ok(encode_skin_data_url(&bytes, mime))
+}
+
+#[tauri::command]
+fn remove_skin(app: tauri::AppHandle) {
+    let _ = fs::remove_file(skin_path(&app));
+    let mut config = load_config(&app);
+    config.skin_enabled = false;
     save_config(&app, &config);
 }
 
@@ -1324,21 +1414,21 @@ mod tests {
         assert!(section_complete("- [x] a\n- [x] b\n"));
         // Mixed -> not complete
         assert!(!section_complete("- [x] a\n- [ ] b\n"));
-        // Empty -> complete (user's rule)
-        assert!(section_complete(""));
-        // Non-checkbox text only -> complete
-        assert!(section_complete("just some notes\n"));
+        // Empty -> NOT complete (empty doesn't count as fulfilled)
+        assert!(!section_complete(""));
+        // Non-checkbox text only -> not complete (no real task)
+        assert!(!section_complete("just some notes\n"));
         // Asterisk markers also count
         assert!(section_complete("* [x] a\n* [x] b\n"));
     }
 
     #[test]
     fn section_complete_ignores_blank_items() {
-        // 仅空白项 -> 视为空模块 -> 完成
-        assert!(section_complete("- [ ] \n"));
-        assert!(section_complete("- [ ]\n"));
+        // 仅空白项 -> 无实项 -> 不完成
+        assert!(!section_complete("- [ ] \n"));
+        assert!(!section_complete("- [ ]\n"));
         // 已勾选的空白项同样忽略
-        assert!(section_complete("- [x] \n"));
+        assert!(!section_complete("- [x] \n"));
         // 实项全勾 + 空白项 -> 完成
         assert!(section_complete("- [x] A\n- [ ] \n"));
         // 实项未勾 + 空白项 -> 不完成
@@ -1645,6 +1735,9 @@ pub fn run() {
             set_alarm_interval,
             get_alarm_duration,
             set_alarm_duration,
+            get_skin,
+            save_skin,
+            remove_skin,
             check_update,
             download_and_install,
         ])

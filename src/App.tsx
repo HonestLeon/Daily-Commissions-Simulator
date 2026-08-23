@@ -17,10 +17,13 @@ function App() {
     fetchDarkMode,
     fetchOpacity,
     fetchAlarmConfig,
+    fetchSkin,
     initDaily,
     getBalance,
     checkWeekly,
     opacity,
+    skinImage,
+    darkMode,
   } = useNoteStore();
   const initialized = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -49,22 +52,36 @@ function App() {
       fetchDarkMode();
       fetchOpacity();
       fetchAlarmConfig();
+      fetchSkin();
       getBalance();
     };
     boot();
 
-    getCurrentWindow().isAlwaysOnTop().then((pinned) => {
-      useNoteStore.setState({ pinMode: pinned ? "pin" : "normal" });
-    });
+    // 非 Tauri（如纯浏览器预览）环境下无窗口桥接，跳过状态同步
+    try {
+      getCurrentWindow()
+        .isAlwaysOnTop()
+        .then((pinned) => {
+          useNoteStore.setState({ pinMode: pinned ? "pin" : "normal" });
+        })
+        .catch(() => {});
+    } catch {
+      // getCurrentWindow() 同步抛错，忽略
+    }
   }, []);
 
   // 回到前台时以后端为准同步一次原石余额，兜底其他场景造成的短线漂移
   useEffect(() => {
-    const unlisten = getCurrentWindow().onFocusChanged(({ payload }) => {
-      if (payload) getBalance();
-    });
+    let unlisten: Promise<() => void> | undefined;
+    try {
+      unlisten = getCurrentWindow().onFocusChanged(({ payload }) => {
+        if (payload) getBalance();
+      });
+    } catch {
+      // 非 Tauri 环境无窗口桥接
+    }
     return () => {
-      unlisten.then((fn) => fn());
+      if (unlisten) unlisten.then((fn) => fn());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -159,6 +176,15 @@ function App() {
 
   return (
     <div className="app" style={{ "--app-bg-opacity": opacity } as React.CSSProperties}>
+      {skinImage && !darkMode && (
+        <>
+          <div
+            className="app-skin"
+            style={{ backgroundImage: `url("${skinImage}")` }}
+          />
+          <div className="app-scrim" />
+        </>
+      )}
       <TitleBar
         onSettings={() => setSettingsOpen(true)}
         onCheckUpdate={handleCheckUpdate}

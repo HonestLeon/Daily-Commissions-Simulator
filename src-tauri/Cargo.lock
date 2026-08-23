@@ -1901,6 +1901,7 @@ dependencies = [
 name = "lightweight-sticky-notes"
 version = "0.2.1"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "serde",
  "serde_json",

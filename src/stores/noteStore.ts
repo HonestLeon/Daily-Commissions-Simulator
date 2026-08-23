@@ -92,8 +92,13 @@ interface NoteState {
   checkWeekly: () => Promise<WeeklyResult>;
   getBalance: () => Promise<void>;
   fetchAlarmConfig: () => Promise<void>;
-  setAlarmInterval: (seconds: number) => Promise<void>;
+  setAlarmInterval: (minutes: number) => Promise<void>;
   setAlarmDuration: (seconds: number) => Promise<void>;
+  skinImage: string;
+  skinActive: boolean;
+  fetchSkin: () => Promise<void>;
+  importSkin: (dataUrl: string) => Promise<void>;
+  removeSkin: () => Promise<void>;
 }
 
 export const useNoteStore = create<NoteState>((set, get) => ({
@@ -107,6 +112,8 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   streak: 0,
   alarmInterval: 10, // 分钟
   alarmDuration: 15,
+  skinImage: "",
+  skinActive: false,
 
   fetchNotes: async () => {
     try {
@@ -304,4 +311,36 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       console.error("Failed to set alarm duration:", e);
     }
   },
+
+  // 皮肤（仅浅色模式生效）：skinImage 为背景 DataURL，skinActive 标记是否启用
+  fetchSkin: async () => {
+    try {
+      const skin = await invoke<string | null>("get_skin");
+      set({ skinImage: skin ?? "", skinActive: !!skin });
+      applySkinMarker(!!skin);
+    } catch (e) {
+      console.error("Failed to fetch skin:", e);
+    }
+  },
+
+  importSkin: async (dataUrl: string) => {
+    const skin = await invoke<string>("save_skin", { dataUrl });
+    set({ skinImage: skin, skinActive: true });
+    applySkinMarker(true);
+  },
+
+  removeSkin: async () => {
+    try {
+      await invoke("remove_skin");
+      set({ skinImage: "", skinActive: false });
+      applySkinMarker(false);
+    } catch (e) {
+      console.error("Failed to remove skin:", e);
+    }
+  },
 }));
+
+// 供 CSS 区分"是否开启皮肤"（仅浅色模式下的面板透明度由 CSS 使用该标记）
+function applySkinMarker(active: boolean) {
+  document.documentElement.dataset.skin = active ? "on" : "off";
+}
