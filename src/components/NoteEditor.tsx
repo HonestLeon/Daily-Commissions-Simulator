@@ -4,6 +4,7 @@ import { Crepe } from "@milkdown/crepe";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { useNoteStore } from "../stores/noteStore";
 import { tomorrowCheckProse } from "./tomorrowCheck";
+import { enterTaskResetProse } from "./enterTaskFix";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -29,9 +30,10 @@ function InnerEditor({
       defaultValue,
     });
 
-    // 明日委托勾选框（每条任务/引用块末尾）
+    // 明日委托勾选框（每条任务/引用块末尾）+ 回车新任务项勾选重置
     crepe.addFeature((editor) => {
       editor.use(tomorrowCheckProse);
+      editor.use(enterTaskResetProse);
     });
 
     // Listen for changes

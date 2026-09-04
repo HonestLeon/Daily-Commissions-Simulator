@@ -2,9 +2,16 @@ import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/prose/view";
 import type { Node } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
-import { listItemSchema, blockquoteSchema } from "@milkdown/preset-commonmark";
+import {
+  listItemSchema,
+  blockquoteSchema,
+  headingSchema,
+} from "@milkdown/preset-commonmark";
 
 const tomorrowKey = new PluginKey("tomorrow-item");
+
+/** 「明日委托」勾选框仅对这两个模块内的项显示（与后端结算/继承的模块划分一致） */
+const TOMORROW_ALLOWED_SECTIONS = new Set(["学习/工作", "生活/其他"]);
 
 /** 当前已挂载的编辑器视图（本应用同一时刻仅一个编辑器） */
 const mountedViews = new Set<EditorView>();
@@ -56,6 +63,7 @@ function findViewFromWidget(el: HTMLElement): EditorView | null {
 export const tomorrowCheckProse = $prose((ctx) => {
   const listItemType = listItemSchema.type(ctx);
   const blockquoteType = blockquoteSchema.type(ctx);
+  const headingType = headingSchema.type(ctx);
 
   const makeButton = (isTask: boolean, absPos: number): HTMLElement => {
     const btn = document.createElement("button");
@@ -145,10 +153,20 @@ export const tomorrowCheckProse = $prose((ctx) => {
         // 注意：只跳过光标所在的目标节点本身，不跳过其祖先（如整个列表），
         // 否则同列表的其他项也会被一并隐藏。
         const selFrom = state.selection.from;
+        // 追踪当前所在模块：命中 level-4 标题（#### 必做 等）时更新。
+        // 与后端 parse_md_sections 的模块划分保持一致。
+        let inAllowedSection = false;
         state.doc.descendants((node, pos) => {
+          if (node.type === headingType && node.attrs.level === 4) {
+            inAllowedSection = TOMORROW_ALLOWED_SECTIONS.has(
+              node.textContent.trim()
+            );
+            return true;
+          }
           const isTask = node.type === listItemType && node.attrs.checked != null;
           const isQuote = node.type === blockquoteType;
           if (!isTask && !isQuote) return; // 非目标节点，继续向下遍历
+          if (!inAllowedSection) return false; // 必做 / 随手小记 / 无模块内容不显示勾选框
           if (selFrom > pos && selFrom < pos + node.nodeSize) {
             return false; // 光标在这一项内（输入中）→ 不显示
           }
