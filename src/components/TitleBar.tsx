@@ -13,6 +13,7 @@ import {
   IconClose,
 } from "./titleIcons";
 import yuanShiIcon from "../assets/yuan-shi.png";
+import moraIcon from "../assets/mora.png";
 import appIcon from "../assets/app-icon.png";
 import lixingIcon from "../assets/lixing.png";
 
@@ -25,7 +26,7 @@ interface Props {
 }
 
 export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: Props) {
-  const { pinMode, alarmInterval, alarmDuration, closeToTray, setCloseBehavior, cyclePinMode, yuanShi } =
+  const { pinMode, alarmInterval, alarmDuration, closeToTray, setCloseBehavior, cyclePinMode, yuanShi, mora } =
     useNoteStore();
   const [showCloseDialog, setShowCloseDialog] = useState(false);
 
@@ -87,6 +88,10 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
         <div className="titlebar-yuanshi" title="原石余额">
           <img src={yuanShiIcon} alt="" width={18} height={18} aria-hidden="true" />
           {yuanShi}
+        </div>
+        <div className="titlebar-mora" title="摩拉余额">
+          <img src={moraIcon} alt="" width={18} height={18} aria-hidden="true" />
+          {mora}
         </div>
         <div style={{ flex: 1 }} data-tauri-drag-region />
         <div className="titlebar-controls">

@@ -77,6 +77,7 @@ interface NoteState {
   opacity: number;
   closeToTray: boolean | null;
   yuanShi: number;
+  mora: number;
   streak: number;
   alarmInterval: number;
   alarmDuration: number;
@@ -114,6 +115,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   opacity: 0.92,
   closeToTray: null,
   yuanShi: 0,
+  mora: 0,
   streak: 0,
   alarmInterval: 10, // 分钟
   alarmDuration: 15,
@@ -141,7 +143,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   initDaily: async () => {
     try {
       const result: InitDailyResult = await invoke("init_daily");
-      set({ yuanShi: result.yuan_shi });
+      set({ yuanShi: result.yuan_shi, mora: result.mora });
       return result;
     } catch (e) {
       console.error("Failed to init daily:", e);
@@ -251,8 +253,9 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   getBalance: async () => {
     try {
       const yuanShi: number = await invoke("get_yuan_shi");
+      const mora: number = await invoke("get_mora");
       const streak: number = await invoke("get_streak");
-      set({ yuanShi, streak });
+      set({ yuanShi, mora, streak });
     } catch (e) {
       console.error("Failed to get balance:", e);
     }

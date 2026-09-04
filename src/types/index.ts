@@ -29,6 +29,10 @@ export interface UpdateInfo {
 export interface InitDailyResult {
   yuan_shi: number;
   settle_reward: number;
+  /** 结算后的摩拉余额（以后端为准） */
+  mora: number;
+  /** 本次结算获得的摩拉 */
+  settle_mora: number;
   settle_triple: boolean;
   settled_note_id: string | null;
   created_today: boolean;

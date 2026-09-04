@@ -133,6 +133,20 @@ body,
   pointer-events: none;
 }
 
+.titlebar-mora {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  color: #b8860b;
+  font-weight: 600;
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: rgba(184, 134, 11, 0.12);
+  pointer-events: none;
+}
+
 .titlebar-btn-icon {
   width: 16px;
   height: 16px;

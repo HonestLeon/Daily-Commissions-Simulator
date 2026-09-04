@@ -37,9 +37,9 @@ function App() {
     const boot = async () => {
       // 1) Settle previous commission + auto-create today's.
       const daily = await initDaily();
-      if (daily && daily.settle_reward > 0) {
+      if (daily && (daily.settle_reward > 0 || daily.settle_mora > 0)) {
         setSettleToast(
-          `前日委托已结算：+${daily.settle_reward} 原石${
+          `前日委托已结算：+${daily.settle_reward} 原石 +${daily.settle_mora} 摩拉${
             daily.settle_triple ? "（三全完成）" : ""
           }`
         );

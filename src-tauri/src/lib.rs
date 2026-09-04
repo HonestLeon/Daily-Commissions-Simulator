@@ -229,9 +229,28 @@ fn settle_reward(sections: &std::collections::HashMap<String, String>) -> (u32, 
     (reward, triple)
 }
 
+/// 摩拉：三个结算模块内「已勾选且非空」的任务条数 × 100。
+/// 未勾选、空白项、引用块（明日委托）均不计入。
+fn mora_reward(sections: &std::collections::HashMap<String, String>) -> u32 {
+    let done = SETTLE_MODULES
+        .iter()
+        .filter_map(|m| sections.get(*m))
+        .flat_map(|s| s.lines().map(str::trim_start))
+        .filter(|l| {
+            !is_blank_item(l)
+                && (l.starts_with("- [x]")
+                    || l.starts_with("- [X]")
+                    || l.starts_with("* [x]")
+                    || l.starts_with("* [X]"))
+        })
+        .count();
+    (done as u32) * 100
+}
+
 struct SettleOutcome {
     id: String,
     reward: u32,
+    mora: u32,
     triple: bool,
 }
 
@@ -252,6 +271,7 @@ fn settle_previous_note(app: &tauri::AppHandle) -> Option<SettleOutcome> {
     let content = fs::read_to_string(notes_dir(app).join(format!("{}.md", &target_id))).ok()?;
     let sections = parse_md_sections(&content);
     let (reward, triple) = settle_reward(&sections);
+    let mora = mora_reward(&sections);
 
     notes[target_idx].settled = true;
     notes[target_idx].triple_complete = triple;
@@ -259,11 +279,13 @@ fn settle_previous_note(app: &tauri::AppHandle) -> Option<SettleOutcome> {
 
     let mut config = load_config(app);
     config.yuan_shi += reward;
+    config.mora += mora;
     save_config(app, &config);
 
     Some(SettleOutcome {
         id: target_id,
         reward,
+        mora,
         triple,
     })
 }
@@ -431,6 +453,8 @@ fn auto_create_daily(app: &tauri::AppHandle) -> Option<NoteMeta> {
 struct InitDailyResult {
     yuan_shi: u32,
     settle_reward: u32,
+    mora: u32,
+    settle_mora: u32,
     settle_triple: bool,
     settled_note_id: Option<String>,
     created_today: bool,
@@ -446,6 +470,8 @@ fn init_daily(app: tauri::AppHandle) -> InitDailyResult {
     InitDailyResult {
         yuan_shi: config.yuan_shi,
         settle_reward: settled.as_ref().map(|s| s.reward).unwrap_or(0),
+        mora: config.mora,
+        settle_mora: settled.as_ref().map(|s| s.mora).unwrap_or(0),
         settle_triple: settled.as_ref().map(|s| s.triple).unwrap_or(false),
         settled_note_id: settled.map(|s| s.id),
         created_today: created.is_some(),
@@ -627,6 +653,8 @@ struct AppConfig {
     #[serde(default)]
     yuan_shi: u32,
     #[serde(default)]
+    mora: u32,
+    #[serde(default)]
     streak: u32,
     /// 已结算的自然周（周一 YYYY-MM-DD）：保证周奖励每自然周只结算一次
     #[serde(default)]
@@ -651,6 +679,7 @@ impl Default for AppConfig {
             close_to_tray: true,
             opacity: 0.92,
             yuan_shi: 0,
+            mora: 0,
             streak: 0,
             weekly_settled_week: String::new(),
             alarm_interval: 600,
@@ -715,6 +744,11 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
 #[tauri::command]
 fn get_yuan_shi(app: tauri::AppHandle) -> u32 {
     load_config(&app).yuan_shi
+}
+
+#[tauri::command]
+fn get_mora(app: tauri::AppHandle) -> u32 {
+    load_config(&app).mora
 }
 
 #[tauri::command]
@@ -1602,6 +1636,43 @@ mod tests {
     }
 
     #[test]
+    fn mora_reward_values() {
+        use std::collections::HashMap;
+        let mut m = HashMap::new();
+        // 示例：必做 5 条已勾选 + 学习/工作 2 条 + 生活/其他 3 条 → 1000
+        m.insert(
+            "必做".to_string(),
+            "- [x] 1\n- [x] 2\n- [x] 3\n- [x] 4\n- [x] 5\n".to_string(),
+        );
+        m.insert(
+            "学习/工作".to_string(),
+            "- [x] a\n- [x] b\n".to_string(),
+        );
+        m.insert(
+            "生活/其他".to_string(),
+            "- [x] A\n- [x] B\n- [x] C\n".to_string(),
+        );
+        assert_eq!(mora_reward(&m), 100 * 10);
+
+        // 未勾选、空白勾选项、引用块不计入；只数已勾选项
+        let mut m2 = HashMap::new();
+        m2.insert(
+            "必做".to_string(),
+            "- [x] done\n- [ ] todo\n- [x]\n> 明日委托\n".to_string(),
+        );
+        m2.insert(
+            "学习/工作".to_string(),
+            "- [x]\n* [x] star\n".to_string(),
+        );
+        m2.insert("生活/其他".to_string(), "- [ ] todo2\n".to_string());
+        // 计入：done、* [x] star 共 2 项；`- [x]` 空项是空白项、`> 明日委托` 是引用块，均不计
+        assert_eq!(mora_reward(&m2), 200);
+
+        // 模块缺失按 0 计
+        assert_eq!(mora_reward(&HashMap::new()), 0);
+    }
+
+    #[test]
     fn inherit_carries_only_unfinished_and_keeps_free_form_blank() {
         let prev = "### 每日委托\n\n#### 必做\n\n- [x] A\n- [ ] B\n\n#### 学习/工作\n\n- [ ] C\n\n#### 生活/其他\n\n- [x] D\n\n#### 随手小记\n\n- 昨天的灵感\n";
         let result = inherit_from_prev(prev);
@@ -1767,6 +1838,7 @@ pub fn run() {
             init_daily,
             check_weekly,
             get_yuan_shi,
+            get_mora,
             get_streak,
             get_close_behavior,
             set_close_behavior,
