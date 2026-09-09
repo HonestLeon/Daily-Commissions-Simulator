@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "powershell -ExecutionPolicy Bypass -File build-release.ps1",
+    "release:doc": "powershell -ExecutionPolicy Bypass -File build-release.ps1 -SkipBuild"
   },
   "dependencies": {
     "@milkdown/crepe": "^7.6.4",

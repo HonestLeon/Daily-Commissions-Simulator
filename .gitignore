@@ -33,6 +33,7 @@ src-tauri/gen/
 *.exe.old
 releases/
 release-build/
+发布包/
 
 # Tool docs
 .trae/
