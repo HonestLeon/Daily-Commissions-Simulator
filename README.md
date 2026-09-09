@@ -313,7 +313,6 @@ lightweight-sticky-notes/
 │   └── Cargo.toml
 ├── dist/                         # 前端构建产物（build 时生成）
 ├── releases/                     # 安装版发布包
-├── demo/                         # 演示页
 ├── index.html
 ├── package.json
 ├── vite.config.ts

@@ -32,6 +32,7 @@ src-tauri/gen/
 *.msi
 *.exe.old
 releases/
+release-build/
 
 # Tool docs
 .trae/
