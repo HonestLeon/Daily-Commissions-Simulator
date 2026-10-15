@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasio/bonsaidb/main/tauri.conf.schema.json",
-  "productName": "轻量便签",
+  "productName": "每日委托模拟器",
   "version": "0.2.4",
   "identifier": "com.liurr.lightweight-sticky-notes",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "便签",
+        "title": "每日委托模拟器",
         "width": 620,
         "height": 500,
         "minWidth": 340,

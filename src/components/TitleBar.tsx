@@ -14,6 +14,7 @@ import {
 } from "./titleIcons";
 import yuanShiIcon from "../assets/yuan-shi.png";
 import moraIcon from "../assets/mora.png";
+import qiyuanIcon from "../assets/qiyuan.png";
 import appIcon from "../assets/app-icon.png";
 import lixingIcon from "../assets/lixing.png";
 
@@ -81,7 +82,7 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
         <img
           className="titlebar-logo"
           src={appIcon}
-          alt="轻量便签"
+          alt="每日委托模拟器"
           title="打开 Gitee 仓库"
           onClick={() => openUrl(GITEE_REPO_URL)}
         />
@@ -102,6 +103,17 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
             aria-label="砺行修远"
           >
             <img className="titlebar-btn-icon" src={lixingIcon} alt="" aria-hidden="true" />
+          </button>
+
+          {/* 祈愿：功能占位，暂未实现 */}
+          <button className="titlebar-btn" title="祈愿" aria-label="祈愿">
+            <img
+              className="titlebar-btn-icon"
+              src={qiyuanIcon}
+              alt=""
+              style={{ width: 20, height: 20 }}
+              aria-hidden="true"
+            />
           </button>
 
           <button

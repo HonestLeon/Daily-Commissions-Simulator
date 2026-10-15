@@ -1,7 +1,7 @@
 [package]
 name = "lightweight-sticky-notes"
 version = "0.2.4"
-description = "轻量半透明 Markdown 便签"
+description = "每日委托模拟器 · 半透明 Markdown 桌面便签"
 authors = ["HonestLeon"]
 edition = "2021"
 

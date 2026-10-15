@@ -1,7 +1,7 @@
-# 轻量便签 (Lightweight Sticky Notes)
+# 每日委托模拟器 (Daily Commissions Simulator)
 
 <p align="center">
-  <img src="src-tauri/icons/128x128.png" alt="轻量便签 Logo" width="96" />
+  <img src="src-tauri/icons/128x128.png" alt="每日委托模拟器 Logo" width="96" />
 </p>
 
 <p align="center">
@@ -125,15 +125,15 @@
 
 ### 🟢 绿色版（推荐）
 
-下载 `LightweightStickyNotes_Portable.exe`，放到任意目录，双击运行。
+下载 `每日委托模拟器_0.2.4_x64-portable.exe`，放到任意目录，双击运行。
 
 无需安装、无卸载残留。搬家或分享直接复制这一个文件即可。
 
 ### 📦 安装版
 
-运行 `轻量便签_0.2.0_x64-setup.exe`，按提示完成安装。
+运行 `每日委托模拟器_0.2.4_x64-setup.exe`，按提示完成安装。
 
-- 默认路径：`%LOCALAPPDATA%\Programs\LightweightStickyNotes`
+- 默认路径：`%LOCALAPPDATA%\Programs\` 下的应用目录
 - 自动创建桌面和开始菜单快捷方式
 - 在「设置 → 应用」中可正常卸载
 
@@ -193,17 +193,19 @@
 
 ## 截图展示
 
-> 下列截图基于 v0.2.0 版本，实际界面可能随版本迭代略有差异。
+| 主界面 | 每日委托 | 明日委托 |
+| ------ | -------- | -------- |
+| ![主界面](docs/assets/01-主界面.png) | ![每日委托](docs/assets/02-每日委托.png) | ![明日委托](docs/assets/03-明日委托.png) |
 
-| 浅色模式编辑 | 委托列表 |
-| ------------ | -------- |
-| ![浅色模式](docs/screenshots/light-mode.png) | ![委托列表](docs/screenshots/sidebar.png) |
+| 设置 · 颜色主题 | 天空蓝 | 樱花粉 | 护眼绿 |
+| --------------- | ------ | ------ | ------ |
+| ![设置-主题](docs/assets/04-设置-主题.png) | ![天空蓝](docs/assets/05-主题-天空蓝.png) | ![樱花粉](docs/assets/06-主题-樱花粉.png) | ![护眼绿](docs/assets/07-主题-护眼绿.png) |
 
-| 设置面板 | 系统托盘菜单 | 砺行修远 |
-| -------- | ------------ | -------------- |
-| ![设置](docs/screenshots/settings.png) | ![托盘](docs/screenshots/tray.png) | ![砺行修远](docs/screenshots/lixing.png) |
+| 砺行修远 | 检查更新 |
+| -------- | -------- |
+| ![砺行修远](docs/assets/08-砺行修远.png) | ![检查更新](docs/assets/09-检查更新.png) |
 
-> 提示：首次运行若未准备截图，上述占位图不会显示。可在 `docs/screenshots/` 目录放入同名 PNG 后重新查看。
+> 截图与《使用说明》共用 `docs/assets/`，界面随版本迭代可能略有差异。
 
 ---
 
@@ -262,7 +264,7 @@ npm run tauri build
 
 产物：
 - 绿色版：`src-tauri/target/release/lightweight-sticky-notes.exe`
-- 安装版：`src-tauri/target/release/bundle/nsis/轻量便签_0.2.0_x64-setup.exe`
+- 安装版：`src-tauri/target/release/bundle/nsis/每日委托模拟器_0.2.4_x64-setup.exe`
 
 ### 开发脚本
 
@@ -371,6 +373,10 @@ Windows Defender 等杀毒软件会对首次运行的 exe 进行扫描，这是�
 ---
 
 ## 更新日志
+
+### 未发布
+
+- 应用更名为「每日委托模拟器 (Daily Commissions Simulator)」，窗口标题、托盘名称与安装包文件名同步更新；技术标识符（包名、数据目录、仓库地址）保持不变，老用户数据与自更新不受影响
 
 ### v0.2.4（2026-09-04）
 

@@ -1082,9 +1082,13 @@ fn fetch_update_info(app: &tauri::AppHandle) -> Result<UpdateInfo, String> {
     })
 }
 
-/// 安装版的候选安装目录（相对 LOCALAPPDATA）
+/// 安装版的候选安装目录（相对 LOCALAPPDATA）。
+/// 前两项为更名后（productName=每日委托模拟器）的目录，后三项为旧版
+/// 「轻量便签」时期的目录：保留以保证老版本安装后的自更新检测仍有效。
 fn installed_dirs(local_appdata: &std::path::Path) -> Vec<PathBuf> {
     vec![
+        local_appdata.join("Programs").join("每日委托模拟器"),
+        local_appdata.join("每日委托模拟器"),
         local_appdata.join("轻量便签"),
         local_appdata.join("Programs").join("LightweightStickyNotes"),
         local_appdata.join("LightweightStickyNotes"),
@@ -1409,7 +1413,7 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
     let tray = TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
-        .tooltip("轻量便签")
+        .tooltip("每日委托模拟器")
         .on_menu_event(move |app, event| {
             let id = event.id().as_ref();
             match id {
@@ -1774,6 +1778,12 @@ mod tests {
             &base
         ));
         assert!(exe_is_installed_version(&base.join("轻量便签").join("app.exe"), &base));
+        // 更名后的新安装目录同样识别为安装版
+        assert!(exe_is_installed_version(
+            &base.join("Programs").join("每日委托模拟器").join("app.exe"),
+            &base
+        ));
+        assert!(exe_is_installed_version(&base.join("每日委托模拟器").join("app.exe"), &base));
         // 位于任意其他目录（绿色版）→ 免安装版
         assert!(!exe_is_installed_version(
             &PathBuf::from(r"D:\tools\app.exe"),

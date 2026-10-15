@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { Crepe } from "@milkdown/crepe";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { useNoteStore } from "../stores/noteStore";
@@ -7,6 +8,28 @@ import { tomorrowCheckProse } from "./tomorrowCheck";
 import { enterTaskResetProse } from "./enterTaskFix";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
+
+/**
+ * 解析链接目标：指向本地文件（file:// 前缀或 Windows 盘符绝对路径）时
+ * 返回可被系统打开的实际路径，否则返回 null（web 链接等交给默认行为）。
+ */
+function resolveLocalPath(href: string): string | null {
+  if (href.startsWith("file://")) {
+    const raw = href.slice("file://".length);
+    let path: string;
+    try {
+      path = decodeURIComponent(raw);
+    } catch {
+      path = raw;
+    }
+    // file:///D:/foo.pdf → D:/foo.pdf
+    if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1);
+    return path;
+  }
+  // 直接书写盘符绝对路径：D:\foo.pdf 或 D:/foo.pdf
+  if (/^[A-Za-z]:[\\/]/.test(href)) return href;
+  return null;
+}
 
 // Inner editor component — uses Milkdown hooks
 function InnerEditor({
@@ -61,6 +84,32 @@ export default function NoteEditor() {
   const [saveStatus, setSaveStatus] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorKey = useRef(0);
+
+  // 单击编辑器内的本地文件链接时，用系统默认程序打开。
+  // 用 document 捕获阶段监听（先于 Milkdown 的冒泡处理），仅处理 Milkdown 渲染区内的链接。
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest?.(".ProseMirror")) return; // 仅编辑器内容区
+      const anchor = target.closest("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") ?? "";
+      const local = resolveLocalPath(href);
+      if (!local) return; // 非本地文件链接，保留默认行为
+      e.preventDefault();
+      e.stopPropagation();
+      // 非 Tauri（纯浏览器预览）环境下 openPath 不可用，静默忽略
+      try {
+        openPath(local).catch(() => {});
+      } catch {
+        // ignore
+      }
+    };
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
 
   // Load note content when activeId changes
   useEffect(() => {
