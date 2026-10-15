@@ -14,22 +14,22 @@
     "release:doc": "powershell -ExecutionPolicy Bypass -File build-release.ps1 -SkipBuild"
   },
   "dependencies": {
-    "@milkdown/crepe": "^7.6.4",
-    "@milkdown/kit": "^7.6.4",
-    "@milkdown/react": "^7.6.4",
-    "@tauri-apps/api": "^2.4.0",
-    "@tauri-apps/plugin-opener": "^2.5.4",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "zustand": "^5.0.4"
+    "@milkdown/crepe": "~7.22.3",
+    "@milkdown/kit": "~7.22.3",
+    "@milkdown/react": "~7.22.3",
+    "@tauri-apps/api": "~2.11.1",
+    "@tauri-apps/plugin-opener": "~2.5.4",
+    "react": "~19.2.7",
+    "react-dom": "~19.2.7",
+    "zustand": "~5.0.14"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.3",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.6.0",
-    "prettier": "^3.9.10",
+    "@tauri-apps/cli": "~2.11.3",
+    "@types/react": "~19.2.17",
+    "@types/react-dom": "~19.2.3",
+    "@vitejs/plugin-react": "~4.7.0",
+    "prettier": "~3.9.10",
     "typescript": "~5.8.3",
-    "vite": "^6.3.5"
+    "vite": "~6.4.3"
   }
 }

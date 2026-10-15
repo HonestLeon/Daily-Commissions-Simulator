@@ -22,6 +22,7 @@ This file provides guidance to the AI agent when working with code in this repos
 ## 跨层同步的隐式契约（改一处必须改另一处）
 
 - **版本号**：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 三处同值，外加 README「更新日志」一节。
+- **依赖范围**：直接依赖一律 `~`（补丁级）+ lock 钉版本，别改回 `^`、别 `npm install pkg@latest`。剩余的 5 个 low 告警全部来自 `micromark-extension-math` 里嵌套的 `katex@0.16.x`（上游声明 `katex: ^0.16.0`，而修复版本只在 0.18.2+）——只能等上游放宽范围；**不要跑 `npm audit fix --force`**，它会把 Milkdown 降到 7.5.9 这种破坏性版本。
 - **结算模块名**：Rust 侧 `DAILY_CONTENT` / `SETTLE_MODULES` 里的 `#### 必做`、`#### 学习/工作`、`#### 生活/其他` 按标题文本精确匹配，前端 `tomorrowCheck.ts` 的 `TOMORROW_ALLOWED_SECTIONS` 是同一份字符串的第二副本。
 - **主题名**：`lib.rs` 的 `APP_THEMES` 与 `noteStore.ts` 的 `APP_THEMES` 各写了一份。
 - 原石 / 摩拉 / 砺行连续周数以 Rust 为权威来源，前端只采纳后端回传的值，不再本地累加。
