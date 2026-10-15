@@ -8,8 +8,8 @@
 :root {
   /* 面板表面：统一"白"与透明度系数（随应用透明度联动） */
   --panel-surface: 255, 255, 255;
-  --panel-alpha: 0.6;          /* 标题栏 / 侧边栏 */
-  --panel-alpha-strong: 0.72;  /* 编辑区（内容承载区略实） */
+  --panel-alpha: 0.6; /* 标题栏 / 侧边栏 */
+  --panel-alpha-strong: 0.72; /* 编辑区（内容承载区略实） */
   /* 语义文字色（对比度优化，见项 1） */
   --text-primary: #2b2b2b;
   --text-secondary: #5c5c5c;
@@ -201,7 +201,9 @@ body,
   border-right: 1px solid rgba(255, 255, 255, 0.35);
   display: flex;
   flex-direction: column;
-  transition: width 0.2s, min-width 0.2s;
+  transition:
+    width 0.2s,
+    min-width 0.2s;
 }
 
 .sidebar.collapsed {
@@ -417,7 +419,10 @@ body,
   cursor: pointer;
   vertical-align: middle;
   opacity: 0.55;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
   border-radius: 3px;
 }
 
@@ -838,7 +843,9 @@ body,
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .theme-card:hover {

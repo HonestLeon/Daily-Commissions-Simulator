@@ -46,9 +46,7 @@ export default function LixingDialog({ result, onClose }: Props) {
                 </div>
               ))
             ) : (
-              <p style={{ fontSize: 13, color: "#aaa", textAlign: "center" }}>
-                本周还没有委托记录
-              </p>
+              <p style={{ fontSize: 13, color: "#aaa", textAlign: "center" }}>本周还没有委托记录</p>
             )}
           </div>
 
@@ -62,7 +60,9 @@ export default function LixingDialog({ result, onClose }: Props) {
           >
             {result.eligible ? (
               <>
-                <div>三全完成天数：<strong>{result.count}</strong> 天（≥5 达标）</div>
+                <div>
+                  三全完成天数：<strong>{result.count}</strong> 天（≥5 达标）
+                </div>
                 <div style={{ marginTop: 6 }}>
                   {result.reward > 0 ? (
                     <>
@@ -80,10 +80,10 @@ export default function LixingDialog({ result, onClose }: Props) {
               </>
             ) : (
               <>
-                <div>三全完成天数：<strong>{result.count}</strong> 天（未达 5 天）</div>
-                <div style={{ marginTop: 6, color: "#c0392b" }}>
-                  本周未达标，砺行连续周数已清零
+                <div>
+                  三全完成天数：<strong>{result.count}</strong> 天（未达 5 天）
                 </div>
+                <div style={{ marginTop: 6, color: "#c0392b" }}>本周未达标，砺行连续周数已清零</div>
                 <div style={{ marginTop: 6, color: "#aaa", fontSize: 13 }}>
                   还需 {Math.max(0, 5 - result.count)} 天三全完成才能获得奖励
                 </div>

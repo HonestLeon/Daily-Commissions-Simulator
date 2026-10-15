@@ -45,7 +45,9 @@ function startAlarmTimer(intervalMs: number, durationMs: number) {
       return; // 窗口操作失败，本轮放弃
     }
     // 聚焦尽力而为，失败不影响后续隐藏流程
-    getCurrentWindow().setFocus().catch(() => {});
+    getCurrentWindow()
+      .setFocus()
+      .catch(() => {});
     alarmTimeoutId = setTimeout(async () => {
       alarmTimeoutId = null;
       try {
@@ -130,8 +132,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       if (notes.length > 0 && !get().activeId) {
         // 默认打开当天的委托便签（created_at 为 YYYY-MM-DD 前缀）
         const now = new Date();
-        const today =
-          `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+        const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
         const todayNote = notes.find((n) => n.created_at.startsWith(today));
         set({ activeId: todayNote ? todayNote.id : notes[0].id });
       }
@@ -156,11 +157,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       await invoke("delete_note", { id });
       const notes = get().notes.filter((n) => n.id !== id);
       const activeId =
-        get().activeId === id
-          ? notes.length > 0
-            ? notes[0].id
-            : null
-          : get().activeId;
+        get().activeId === id ? (notes.length > 0 ? notes[0].id : null) : get().activeId;
       set({ notes, activeId });
     } catch (e) {
       console.error("Failed to delete note:", e);
@@ -185,8 +182,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   cyclePinMode: async () => {
     const { pinMode } = get();
     // pin → alarm → normal → pin
-    const next: PinMode =
-      pinMode === "pin" ? "alarm" : pinMode === "alarm" ? "normal" : "pin";
+    const next: PinMode = pinMode === "pin" ? "alarm" : pinMode === "alarm" ? "normal" : "pin";
     await get().setPinMode(next);
   },
 

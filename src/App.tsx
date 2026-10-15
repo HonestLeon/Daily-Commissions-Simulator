@@ -170,10 +170,7 @@ function App() {
     <div className="app" style={{ "--app-bg-opacity": opacity } as React.CSSProperties}>
       {skinImage && (
         <>
-          <div
-            className="app-skin"
-            style={{ backgroundImage: `url("${skinImage}")` }}
-          />
+          <div className="app-skin" style={{ backgroundImage: `url("${skinImage}")` }} />
           <div className="app-scrim" />
         </>
       )}

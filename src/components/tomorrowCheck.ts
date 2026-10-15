@@ -2,11 +2,7 @@ import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/prose/view";
 import type { Node } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
-import {
-  listItemSchema,
-  blockquoteSchema,
-  headingSchema,
-} from "@milkdown/preset-commonmark";
+import { listItemSchema, blockquoteSchema, headingSchema } from "@milkdown/preset-commonmark";
 
 const tomorrowKey = new PluginKey("tomorrow-item");
 
@@ -158,9 +154,7 @@ export const tomorrowCheckProse = $prose((ctx) => {
         let inAllowedSection = false;
         state.doc.descendants((node, pos) => {
           if (node.type === headingType && node.attrs.level === 4) {
-            inAllowedSection = TOMORROW_ALLOWED_SECTIONS.has(
-              node.textContent.trim()
-            );
+            inAllowedSection = TOMORROW_ALLOWED_SECTIONS.has(node.textContent.trim());
             return true;
           }
           const isTask = node.type === listItemType && node.attrs.checked != null;
@@ -172,9 +166,7 @@ export const tomorrowCheckProse = $prose((ctx) => {
           }
           const end = textEndPos(node);
           if (end != null) {
-            decos.push(
-              Decoration.widget(pos + end, () => makeButton(isTask, pos), { side: -1 })
-            );
+            decos.push(Decoration.widget(pos + end, () => makeButton(isTask, pos), { side: -1 }));
           }
           return false; // 目标节点内部无需再遍历
         });

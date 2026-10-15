@@ -52,9 +52,7 @@ export default function UpdateDialog({ state, onClose, onUpdate }: Props) {
               </p>
               <button className="template-option" onClick={onUpdate}>
                 <div className="template-option-title">⬇️ 立即更新</div>
-                <div className="template-option-desc">
-                  自动下载并安装新版本
-                </div>
+                <div className="template-option-desc">自动下载并安装新版本</div>
               </button>
             </>
           )}

@@ -4,7 +4,11 @@ interface IconProps {
   size?: number;
 }
 
-function Svg({ size = 16, children, viewBox = "0 0 24 24" }: IconProps & { children: React.ReactNode; viewBox?: string }) {
+function Svg({
+  size = 16,
+  children,
+  viewBox = "0 0 24 24",
+}: IconProps & { children: React.ReactNode; viewBox?: string }) {
   return (
     <svg
       width={size}

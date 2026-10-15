@@ -153,10 +153,7 @@ export default function Sidebar() {
           >
             <button
               onClick={() =>
-                startRename(
-                  contextMenu.id,
-                  notes.find((n) => n.id === contextMenu.id)?.title ?? ""
-                )
+                startRename(contextMenu.id, notes.find((n) => n.id === contextMenu.id)?.title ?? "")
               }
             >
               重命名

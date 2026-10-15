@@ -39,7 +39,7 @@ export interface InitDailyResult {
 }
 
 export interface WeeklyDay {
-  day: string;   // MMDD
+  day: string; // MMDD
   triple: boolean;
 }
 

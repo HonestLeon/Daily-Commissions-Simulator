@@ -99,9 +99,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
           >
             <div className="settings-label">
               <div className="settings-label-title">开机自启动</div>
-              <div className="settings-label-desc">
-                登录 Windows 时自动启动应用（最小化到托盘）
-              </div>
+              <div className="settings-label-desc">登录 Windows 时自动启动应用（最小化到托盘）</div>
             </div>
             <div className={`settings-toggle ${autoStart ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
@@ -110,11 +108,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
           {/* Theme selection */}
           <div className="settings-section-title">主题</div>
-          <div
-            className="theme-options"
-            role="radiogroup"
-            aria-label="界面主题"
-          >
+          <div className="theme-options" role="radiogroup" aria-label="界面主题">
             {THEME_OPTIONS.map((t) => (
               <button
                 key={t.id}
@@ -124,15 +118,9 @@ export default function SettingsPanel({ open, onClose }: Props) {
                 className={`theme-card${theme === t.id ? " active" : ""}`}
                 onClick={() => setTheme(t.id)}
               >
-                <div
-                  className="theme-card-preview"
-                  style={{ background: t.bg }}
-                >
+                <div className="theme-card-preview" style={{ background: t.bg }}>
                   <span className="theme-card-sample">委托 Aa</span>
-                  <span
-                    className="theme-card-bar"
-                    style={{ background: t.accent }}
-                  />
+                  <span className="theme-card-bar" style={{ background: t.accent }} />
                 </div>
                 <span className="theme-card-name">{t.name}</span>
               </button>
@@ -143,12 +131,8 @@ export default function SettingsPanel({ open, onClose }: Props) {
           <div className="settings-section-title">显示</div>
           <label className="settings-row">
             <div className="settings-label">
-              <div className="settings-label-title">
-                透明度（{Math.round(opacity * 100)}%）
-              </div>
-              <div className="settings-label-desc">
-                窗口整体不透明度（25% ~ 100%）
-              </div>
+              <div className="settings-label-title">透明度（{Math.round(opacity * 100)}%）</div>
+              <div className="settings-label-desc">窗口整体不透明度（25% ~ 100%）</div>
             </div>
             <input
               type="range"
@@ -179,17 +163,11 @@ export default function SettingsPanel({ open, onClose }: Props) {
             )}
           </div>
           <div className="settings-row">
-            <button
-              className="settings-action-btn"
-              onClick={() => fileInputRef.current?.click()}
-            >
+            <button className="settings-action-btn" onClick={() => fileInputRef.current?.click()}>
               导入 / 更换
             </button>
             {skinActive && (
-              <button
-                className="settings-action-btn danger"
-                onClick={removeSkin}
-              >
+              <button className="settings-action-btn danger" onClick={removeSkin}>
                 移除皮肤
               </button>
             )}
@@ -212,9 +190,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className="settings-label">
               <div className="settings-label-title">关闭行为</div>
               <div className="settings-label-desc">
-                {closeToTray
-                  ? "点击关闭时最小化到托盘"
-                  : "点击关闭时直接退出程序"}
+                {closeToTray ? "点击关闭时最小化到托盘" : "点击关闭时直接退出程序"}
               </div>
             </div>
             <div className={`settings-toggle ${closeToTray ? "on" : "off"}`}>

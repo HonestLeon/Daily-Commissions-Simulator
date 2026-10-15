@@ -27,12 +27,19 @@ interface Props {
 }
 
 export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: Props) {
-  const { pinMode, alarmInterval, alarmDuration, closeToTray, setCloseBehavior, cyclePinMode, yuanShi, mora } =
-    useNoteStore();
+  const {
+    pinMode,
+    alarmInterval,
+    alarmDuration,
+    closeToTray,
+    setCloseBehavior,
+    cyclePinMode,
+    yuanShi,
+    mora,
+  } = useNoteStore();
   const [showCloseDialog, setShowCloseDialog] = useState(false);
 
-  const ModeIcon =
-    pinMode === "pin" ? IconPin : pinMode === "alarm" ? IconAlarm : IconNormal;
+  const ModeIcon = pinMode === "pin" ? IconPin : pinMode === "alarm" ? IconAlarm : IconNormal;
   const modeTitle =
     pinMode === "pin"
       ? "始终置顶（点击切换模式）"
@@ -134,12 +141,7 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
             <IconRefresh />
           </button>
 
-          <button
-            className="titlebar-btn"
-            onClick={onSettings}
-            title="设置"
-            aria-label="设置"
-          >
+          <button className="titlebar-btn" onClick={onSettings} title="设置" aria-label="设置">
             <IconSettings />
           </button>
 
