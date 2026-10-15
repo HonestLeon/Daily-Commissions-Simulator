@@ -1,0 +1,17 @@
+node_modules
+dist
+发布包
+src-tauri/target
+src-tauri/gen
+package-lock.json
+src-tauri/Cargo.lock
+docs/assets
+pictures
+*.png
+*.ico
+
+# 个人/工具配置，不参与团队格式化
+.qoder/settings.local.json
+.claude/settings.local.json
+.trae
+.workbuddy

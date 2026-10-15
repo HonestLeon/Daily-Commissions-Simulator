@@ -31,6 +31,7 @@ src-tauri/gen/
 *.exe
 *.msi
 *.exe.old
+*.zip
 releases/
 release-build/
 发布包/
@@ -40,6 +41,9 @@ release-build/
 
 # Tool memory (WorkBuddy)
 .workbuddy/
+
+# Qoder CLI 本机个人授权记录（.qoder/settings.json 与 hooks 是团队共享、需入库）
+.qoder/settings.local.json
 
 # Source images (icon sources, not tracked)
 pictures/

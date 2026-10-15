@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .qoder/hooks/check.sh",
+            "name": "收尾自检: tsc + 版本号 + 文档同步",
+            "statusMessage": "跑 tsc 类型检查与版本/文档一致性",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .qoder/hooks/rust-shell-guard.sh",
+            "name": "rust-shell-guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .qoder/hooks/auto-format.sh",
+            "name": "auto-format (prettier)",
+            "statusMessage": "Prettier 格式化改动的文件",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
