@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "lightweight-sticky-notes"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1911,6 +1911,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "ureq",
  "uuid",
+ "windows",
  "winreg",
 ]
 

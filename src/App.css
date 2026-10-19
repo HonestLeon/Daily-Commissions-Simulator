@@ -825,6 +825,38 @@ body,
   background: rgba(192, 57, 43, 0.1);
 }
 
+/* 设置面板：桌宠动作间隔（六档用小胶囊，避免六行控件挤爆面板） */
+.pet-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 10px;
+}
+
+.pet-chip {
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.pet-chip:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.pet-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.8);
+}
+
 /* 设置面板：主题选择卡片（含微缩预览） */
 .theme-options {
   display: flex;
@@ -940,4 +972,144 @@ button.settings-row:focus-visible {
   border: 2px solid #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   cursor: pointer;
+}
+
+/* ── 桌宠态 ── */
+
+/* 整窗就是那只宠物：卡片外壳、面板底色、皮肤层都必须撤掉，否则透明窗里会出现一块
+   不透明的矩形。窗口尺寸已等于宠物包围盒，不留透明余量（§5.1：我们没有逐像素穿透）。 */
+.app[data-form="pet"] {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.app[data-form="pet"] .app-skin,
+.app[data-form="pet"] .app-scrim {
+  display: none;
+}
+
+/* visibility 而不是 display:none —— 卸载会让 Milkdown 重跑初始化回调并丢光标/滚动位置 */
+.app[data-form="pet"] .note-root {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 结算提示在宠物态改由气泡承载（PR6），先不占位 */
+.app[data-form="pet"] .settle-toast {
+  display: none;
+}
+
+.pet-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* α-WebM 的画布是 640×360，角色可见包围盒是 x208–428 / y58–336（220×278）。
+   宠物窗等于包围盒，所以把整张画布放大到「包围盒刚好铺满窗口」，多出来的透明部分
+   由窗口边界裁掉。百分比换算：宽 640/220，left -208/220，top -58/278（相对高度）。 */
+.pet-video {
+  position: absolute;
+  width: 290.909%;
+  aspect-ratio: 640 / 360;
+  left: -94.545%;
+  top: -20.863%;
+  opacity: 0;
+  pointer-events: none; /* 点击一律交给 .pet-stage，别让视频层吃掉 */
+}
+
+.pet-video.is-active {
+  opacity: 1;
+}
+
+/* ── 气泡窗（独立小窗，紧贴实测文字盒）── */
+
+.pet-bubble-wrap {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* max-width 是气泡宽度的唯一约束：窗口尺寸照着它的实测结果收，
+   所以这里改动会直接决定气泡窗的物理大小。
+   width:max-content + flex-shrink:0 是必需的：外层是 100vw，而 100vw 又由窗口决定，
+   一旦允许盒子被窗口压缩，第一次收紧后就没机会再撑开——发布版实测到一句十五字的话
+   被挤成 54×186（一字一行锁死）。让盒子只按内容计宽，测量才与窗口当前尺寸无关。 */
+.pet-bubble {
+  width: max-content;
+  flex-shrink: 0;
+  max-width: 300px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(80, 96, 152, 0.28);
+  background: rgba(255, 251, 244, 0.96);
+  color: #2a3350;
+  font-size: 14px;
+  line-height: 1.5;
+  box-shadow: 0 3px 12px rgba(20, 40, 80, 0.2);
+  word-break: break-word;
+}
+
+/* 占位色块：宽高比照 α-WebM 素材的可见包围盒 220:278，PR5 换成 <video> 时延用同一比例 */
+.pet-body {
+  width: 86%;
+  aspect-ratio: 220 / 278;
+  margin-bottom: 2%;
+  border-radius: 46% 46% 42% 42% / 54% 54% 38% 38%;
+  background: radial-gradient(circle at 34% 28%, #cfe8ff 0%, #8fc4f5 45%, #5b8fd6 100%);
+  box-shadow: 0 6px 18px rgba(20, 40, 80, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pet-breath 3.2s ease-in-out infinite;
+}
+
+.pet-face {
+  display: flex;
+  gap: 18%;
+  margin-top: -12%;
+}
+
+.pet-eye {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #1f3a5f;
+}
+
+@keyframes pet-breath {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3%) scale(1.02, 0.98);
+  }
+}
+
+/* 主题染色：一套素材配四套主题，避免每套主题各存一份动画（体积 ×4）。
+   主题标记在 <html> 上（applyThemeMarker 写的 data-theme），不是 .app 自己身上。 */
+[data-theme="sky"] .app[data-form="pet"] .pet-body {
+  filter: hue-rotate(-12deg) saturate(1.1);
+}
+
+[data-theme="sakura"] .app[data-form="pet"] .pet-body {
+  filter: hue-rotate(-70deg) saturate(1.05) brightness(1.05);
+}
+
+[data-theme="green"] .app[data-form="pet"] .pet-body {
+  filter: hue-rotate(55deg) saturate(0.9);
 }

@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "bubble"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -16,6 +16,8 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
+    "core:window:allow-set-min-size",
+    "core:window:allow-set-focusable",
     "window-state:default",
     "opener:default",
     "opener:allow-open-path"

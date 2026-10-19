@@ -1,6 +1,6 @@
 [package]
 name = "lightweight-sticky-notes"
-version = "0.2.4"
+version = "0.2.5"
 description = "每日委托模拟器 · 半透明 Markdown 桌面便签"
 authors = ["HonestLeon"]
 edition = "2021"
@@ -25,5 +25,14 @@ base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+# 桌宠的空闲门控与全屏避让要读用户输入时间与前台窗口几何。版本必须与 tauri 依赖的
+# 一致（Cargo.lock 里只有一个 windows 0.61.3），否则 HWND 会是不同类型、没法比较。
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_SystemInformation",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 

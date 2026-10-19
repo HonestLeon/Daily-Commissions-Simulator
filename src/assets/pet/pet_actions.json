@@ -1,0 +1,83 @@
+[
+  {
+    "Id": "待机呼吸休闲",
+    "File": "idle-breath",
+    "Pool": "Idle",
+    "Weight": 100
+  },
+  {
+    "Id": "悠闲哼歌",
+    "File": "idle-hum",
+    "Pool": "Idle",
+    "Weight": 60
+  },
+  {
+    "Id": "原地小憩沉眠",
+    "File": "idle-sleep",
+    "Pool": "Idle",
+    "Weight": 240,
+    "HourFrom": 23,
+    "HourTo": 8
+  },
+  {
+    "Id": "写代码",
+    "File": "mood-work",
+    "Pool": "Idle",
+    "Weight": 80,
+    "HourFrom": 9,
+    "HourTo": 19
+  },
+  {
+    "Id": "工作状态-垂头叹气冒汗",
+    "File": "mood-sulk",
+    "Pool": "Idle",
+    "Weight": 300,
+    "Gate": "incomplete"
+  },
+  {
+    "Id": "晨间刷牙",
+    "File": "daily-brush",
+    "Pool": "Daily",
+    "Weight": 100,
+    "HourFrom": 6,
+    "HourTo": 9
+  },
+  {
+    "Id": "点击回应-元气挥手",
+    "File": "click-wave",
+    "Pool": "Click",
+    "Weight": 100
+  },
+  {
+    "Id": "点击回应-傲娇生气",
+    "File": "click-pout",
+    "Pool": "Click",
+    "Weight": 30
+  },
+  {
+    "Id": "被鼠标拖拽悬空反馈",
+    "File": "drag-hold",
+    "Pool": "Drag",
+    "Weight": 100
+  },
+  {
+    "Id": "女仆屈膝礼仪",
+    "File": "greet-bow",
+    "Pool": "Greeting",
+    "Weight": 100
+  },
+  {
+    "Id": "余额-金袋叮当",
+    "File": "mood-coins",
+    "Pool": "Notify",
+    "Weight": 100,
+    "Gate": "settled"
+  },
+  {
+    "Id": "偷吃零食被抓住",
+    "File": "mood-snack",
+    "Pool": "Notify",
+    "Weight": 50,
+    "Gate": "empty_note"
+  }
+]

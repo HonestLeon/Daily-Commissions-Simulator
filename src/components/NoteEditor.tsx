@@ -140,9 +140,14 @@ export default function NoteEditor() {
       setSaveStatus("未保存...");
 
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      // 标成「有未落盘改动」：桌宠在这 500ms 里不许缩回
+      useNoteStore.setState({ hasPendingEdit: true });
       saveTimer.current = setTimeout(async () => {
         try {
           await invoke("save_note", { id: activeId, content: md });
+          useNoteStore.setState({ hasPendingEdit: false });
+          // 勾选变了就刷新当天进度：桌宠的动作与气泡要跟着当天的真实状态走
+          void useNoteStore.getState().fetchProgress();
           setSaveStatus("已保存");
           setTimeout(() => setSaveStatus(""), 2000);
         } catch (e) {

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -671,7 +672,77 @@ struct AppConfig {
     /// 界面颜色主题（light / sky / sakura / green，浅色底深色字）
     #[serde(default)]
     theme: String,
+    /// 桌宠模式总开关。为 false 时行为与桌宠化之前完全一致（回滚保险）
+    #[serde(default)]
+    pet_enabled: bool,
+    /// 上次退出时的窗口形态：pet=桌宠态，note=便签态
+    #[serde(default)]
+    form: String,
+    /// 桌宠大小缩放，见 normalize_pet_config（上限刻意低于参考项目的 2.0）
+    #[serde(default = "default_pet_scale")]
+    pet_scale: f32,
+    /// 动作间隔档位下标（PET_ACTION_RANGES，区间内随机而非固定周期）
+    #[serde(default = "default_pet_action_index")]
+    pet_action_index: u8,
+    /// 鼠标移出后自动缩回便签/宠物态的宽限毫秒；0 = 不自动缩回
+    #[serde(default = "default_pet_collapse_ms")]
+    pet_auto_collapse_ms: u32,
+    /// 他人全屏时桌宠自动避让
+    #[serde(default = "default_true")]
+    pet_hide_on_fullscreen: bool,
+    /// 桌宠态几何：窗口左上角与尺寸（物理像素）
+    #[serde(default)]
+    pet_x: Option<i32>,
+    #[serde(default)]
+    pet_y: Option<i32>,
+    /// 便签态几何
+    #[serde(default)]
+    note_x: Option<i32>,
+    #[serde(default)]
+    note_y: Option<i32>,
+    #[serde(default)]
+    note_w: Option<u32>,
+    #[serde(default)]
+    note_h: Option<u32>,
 }
+
+/// 动作间隔档位（秒）：只存档位下标，实际等待时长在区间内随机
+const PET_ACTION_RANGES: [(u32, u32); 6] = [
+    (15, 30),
+    (30, 60),
+    (45, 90),
+    (60, 120),
+    (120, 180),
+    (180, 300),
+];
+
+/// 桌宠缩放区间。上限收在 1.5：宠物窗做不到逐像素点击穿透（Tauri 只支持整窗
+/// setIgnoreCursorEvents），Scale 直接等于压在桌面上的死区尺寸——1.5 约 257×324，
+/// 2.0 约 342×432。待实测确认死区可接受后再考虑放宽。
+const PET_SCALE_MIN: f32 = 0.5;
+const PET_SCALE_MAX: f32 = 1.5;
+
+/// 自动缩回宽限的上限，防止被手改成离谱值后看起来像「缩不回」
+const PET_COLLAPSE_MS_MAX: u32 = 5_000;
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_pet_scale() -> f32 {
+    1.0
+}
+
+fn default_pet_action_index() -> u8 {
+    2
+}
+
+fn default_pet_collapse_ms() -> u32 {
+    500
+}
+
+/// 合法的窗口形态
+const APP_FORMS: [&str; 2] = ["pet", "note"];
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -686,6 +757,18 @@ impl Default for AppConfig {
             alarm_duration: 15,
             skin_enabled: false,
             theme: String::from("light"),
+            pet_enabled: false,
+            form: String::from("note"),
+            pet_scale: default_pet_scale(),
+            pet_action_index: default_pet_action_index(),
+            pet_auto_collapse_ms: default_pet_collapse_ms(),
+            pet_hide_on_fullscreen: true,
+            pet_x: None,
+            pet_y: None,
+            note_x: None,
+            note_y: None,
+            note_w: None,
+            note_h: None,
         }
     }
 }
@@ -699,15 +782,48 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
 
 fn load_config(app: &tauri::AppHandle) -> AppConfig {
     let path = config_path(app);
-    let mut config = if path.exists() {
-        let data = fs::read_to_string(&path).unwrap_or_default();
-        serde_json::from_str(&data).unwrap_or_default()
-    } else {
-        AppConfig::default()
-    };
+    // 主文件损坏（写一半被断电/杀软截断）时退回上一代 .bak，再退默认值，
+    // 避免一次读取失败就把用户余额与开关清空。
+    let mut config = read_config_file(&path)
+        .or_else(|| read_config_file(&config_bak_path(&path)))
+        .unwrap_or_default();
     normalize_alarm_config(&mut config);
     normalize_theme(&mut config);
+    normalize_form(&mut config);
+    normalize_pet_config(&mut config);
     config
+}
+
+fn read_config_file(path: &PathBuf) -> Option<AppConfig> {
+    let data = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+fn config_bak_path(path: &PathBuf) -> PathBuf {
+    path.with_file_name("config.json.bak")
+}
+
+/// 规范化窗口形态：非法或缺失时回退便签态（桌宠化之前只有便签态）
+fn normalize_form(config: &mut AppConfig) {
+    if !APP_FORMS.contains(&config.form.as_str()) {
+        config.form = String::from("note");
+    }
+}
+
+/// 规范化桌宠参数：越界与 NaN 一律纠偏回默认，而不是让前端拿到 NaN 后崩几何。
+fn normalize_pet_config(config: &mut AppConfig) {
+    if !config.pet_scale.is_finite()
+        || config.pet_scale < PET_SCALE_MIN
+        || config.pet_scale > PET_SCALE_MAX
+    {
+        config.pet_scale = default_pet_scale();
+    }
+    if config.pet_action_index as usize >= PET_ACTION_RANGES.len() {
+        config.pet_action_index = default_pet_action_index();
+    }
+    if config.pet_auto_collapse_ms > PET_COLLAPSE_MS_MAX {
+        config.pet_auto_collapse_ms = default_pet_collapse_ms();
+    }
 }
 
 /// 规范化闹钟参数：旧版本配置文件缺少字段时 serde 会填 0（字段级默认值），
@@ -738,7 +854,312 @@ fn normalize_theme(config: &mut AppConfig) {
 fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
     let path = config_path(app);
     let data = serde_json::to_string_pretty(config).unwrap_or_default();
-    fs::write(&path, data).ok();
+    write_config_atomic(&path, &data).ok();
+}
+
+/// 原子写配置：先落 .tmp 并 sync，再把旧文件挪成 .bak、.tmp 转正。
+/// 原来的裸 fs::write 若在写入途中崩溃/断电会留下截断文件，而桌宠化后 config.json
+/// 还要多存几何与开关，损坏面变大；这样任何一步失败都尽量保住原文件可读。
+fn write_config_atomic(path: &PathBuf, data: &str) -> std::io::Result<()> {
+    let tmp = path.with_file_name("config.json.tmp");
+    {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(data.as_bytes())?;
+        file.sync_all()?;
+    }
+    if path.exists() {
+        // Windows 上 rename 覆盖已存在目标会成功（MoveFileEx 带 REPLACE_EXISTING）
+        let _ = fs::rename(path, config_bak_path(path));
+    }
+    fs::rename(&tmp, path)
+}
+
+/// 前端启动时一次读齐的形态与几何（省掉一串 get_* 往返）
+#[derive(Serialize)]
+struct UiState {
+    pet_enabled: bool,
+    form: String,
+    pet_scale: f32,
+    /// 动作间隔档位下标：设置面板要能高亮当前档，只回上下限反推不出是第几档
+    action_index: u8,
+    action_min_sec: u32,
+    action_max_sec: u32,
+    auto_collapse_ms: u32,
+    hide_on_fullscreen: bool,
+    pet_x: Option<i32>,
+    pet_y: Option<i32>,
+    note_x: Option<i32>,
+    note_y: Option<i32>,
+    note_w: Option<u32>,
+    note_h: Option<u32>,
+}
+
+/// 记录「当前处于哪个形态 + 该形态的窗口几何」。
+/// 宠物态只存位置：尺寸由 pet_scale 与精灵可见包围盒推导，存下来只会在改缩放后失真。
+fn apply_ui_state(config: &mut AppConfig, form: &str, x: i32, y: i32, w: Option<u32>, h: Option<u32>) {
+    if APP_FORMS.contains(&form) {
+        config.form = form.to_string();
+    }
+    if config.form == "pet" {
+        config.pet_x = Some(x);
+        config.pet_y = Some(y);
+    } else {
+        config.note_x = Some(x);
+        config.note_y = Some(y);
+        config.note_w = w;
+        config.note_h = h;
+    }
+}
+
+/// 关掉桌宠就不可能还停在宠物态：否则下次启动是一个没人管的畸形小窗，
+/// 而且托盘/设置面板的开关状态和画面会对不上。托盘切换与 set_pet_config 共用。
+fn enforce_pet_form(config: &mut AppConfig) {
+    if !config.pet_enabled && config.form == "pet" {
+        config.form = String::from("note");
+    }
+}
+
+/// UiState 的唯一构造点：normalize 之后下标必定在区间内
+fn ui_state_of(c: &AppConfig) -> UiState {
+    let (min, max) = PET_ACTION_RANGES[c.pet_action_index as usize];
+    UiState {
+        pet_enabled: c.pet_enabled,
+        form: c.form.clone(),
+        pet_scale: c.pet_scale,
+        action_index: c.pet_action_index,
+        action_min_sec: min,
+        action_max_sec: max,
+        auto_collapse_ms: c.pet_auto_collapse_ms,
+        hide_on_fullscreen: c.pet_hide_on_fullscreen,
+        pet_x: c.pet_x,
+        pet_y: c.pet_y,
+        note_x: c.note_x,
+        note_y: c.note_y,
+        note_w: c.note_w,
+        note_h: c.note_h,
+    }
+}
+
+#[tauri::command]
+fn get_ui_state(app: tauri::AppHandle) -> UiState {
+    ui_state_of(&load_config(&app))
+}
+
+#[tauri::command]
+fn save_ui_state(
+    app: tauri::AppHandle,
+    form: String,
+    x: i32,
+    y: i32,
+    w: Option<u32>,
+    h: Option<u32>,
+) {
+    let mut c = load_config(&app);
+    apply_ui_state(&mut c, &form, x, y, w, h);
+    save_config(&app, &c);
+}
+
+/// 桌宠动作/气泡需要的当天事实。判定完全复用结算那套解析（模块名按标题文本精确
+/// 匹配，权威只有一份），这里只读不写。
+#[derive(Debug, Serialize, Clone)]
+struct TodayProgress {
+    modules_done: u32,
+    triple: bool,
+    /// 三个结算模块里是否至少有一条非空委托（全是空白占位不该被夸）
+    has_tasks: bool,
+    /// 明日委托（引用块 `>`）是否已填
+    tomorrow_filled: bool,
+    note_found: bool,
+}
+
+fn today_progress_internal(app: &tauri::AppHandle) -> TodayProgress {
+    let today = today_ymd();
+    let note = read_index(app)
+        .into_iter()
+        .find(|n| n.created_at.starts_with(&today));
+    let Some(note) = note else {
+        return TodayProgress {
+            modules_done: 0,
+            triple: false,
+            has_tasks: false,
+            tomorrow_filled: false,
+            note_found: false,
+        };
+    };
+    let content = load_note_internal(app, &note.id).unwrap_or_default();
+    progress_of(&content)
+}
+
+/// 从一份委托正文算出当天事实（与 settle_reward 用同一套 section_complete 判定）
+fn progress_of(content: &str) -> TodayProgress {
+    let sections = parse_md_sections(content);
+    let done = SETTLE_MODULES
+        .iter()
+        .filter(|m| sections.get(**m).map(|s| section_complete(s)).unwrap_or(false))
+        .count() as u32;
+    let has_tasks = SETTLE_MODULES.iter().filter_map(|m| sections.get(*m)).any(|s| {
+        s.lines()
+            .map(str::trim_start)
+            .any(|l| (l.starts_with("- [") || l.starts_with("* [")) && !is_blank_item(l))
+    });
+    let tomorrow_filled = content.lines().any(|l| l.trim_start().starts_with('>'));
+    TodayProgress {
+        modules_done: done,
+        triple: done == SETTLE_MODULES.len() as u32,
+        has_tasks,
+        tomorrow_filled,
+        note_found: true,
+    }
+}
+
+#[tauri::command]
+fn get_today_progress(app: tauri::AppHandle) -> TodayProgress {
+    today_progress_internal(&app)
+}
+
+/// 桌宠设置：一次写齐所有可编辑项，返回规范化后的 UiState。
+/// 不做成五个独立命令，是为了让「保存 → normalize → 广播 ui-state-changed → 前端
+/// 按权威值重落几何」只有一条通路（前端的 fetchUiState 已经承担这条链）。
+#[tauri::command]
+fn set_pet_config(
+    app: tauri::AppHandle,
+    pet_enabled: bool,
+    scale: f32,
+    action_index: u8,
+    auto_collapse_ms: u32,
+    hide_on_fullscreen: bool,
+) -> UiState {
+    use tauri::Emitter;
+    let mut c = load_config(&app);
+    c.pet_enabled = pet_enabled;
+    c.pet_scale = scale;
+    c.pet_action_index = action_index;
+    c.pet_auto_collapse_ms = auto_collapse_ms;
+    c.pet_hide_on_fullscreen = hide_on_fullscreen;
+    enforce_pet_form(&mut c);
+    normalize_pet_config(&mut c);
+    normalize_form(&mut c);
+    save_config(&app, &c);
+    refresh_tray_menu(&app);
+    let _ = app.emit("ui-state-changed", ());
+    ui_state_of(&c)
+}
+
+/// 用户多久没动键鼠（秒）。桌宠据此决定「现在说话会不会吵到主人」。
+#[tauri::command]
+fn get_idle_seconds() -> u32 {
+    idle_seconds_internal()
+}
+
+/// 前台窗口是否占满了它所在显示器（游戏 / 投屏 / 全屏播放）。
+/// 只读几何与类名，不枚举进程——桌宠避让不需要知道那是谁。
+#[tauri::command]
+fn is_foreground_fullscreen(app: tauri::AppHandle) -> bool {
+    foreground_fullscreen_internal(&app)
+}
+
+/// GetTickCount 是 32 位、约 49.7 天回绕一次的毫秒计数，必须用 wrapping_sub，
+/// 否则回绕瞬间会算出一个巨大的负数（转 u32 就是天文数字）→ 桌宠整天不开口。
+fn idle_seconds_from_ticks(now: u32, last_input: u32) -> u32 {
+    now.wrapping_sub(last_input) / 1000
+}
+
+/// 前台窗是否覆盖整块屏幕。允许「更大」（某些全屏实现会超出边界一圈）。
+fn rect_covers_monitor(win: [i32; 4], monitor: [i32; 4]) -> bool {
+    win[0] <= monitor[0] && win[1] <= monitor[1] && win[2] >= monitor[2] && win[3] >= monitor[3]
+}
+
+/// 这些「全屏」窗口不是用户在用某个应用，避让它们没有意义：桌面本体、任务栏、
+/// 通知区域溢出窗。把它们算成全屏会让桌宠永远躲着不出来。
+const IGNORED_FOREGROUND_CLASSES: [&str; 4] = [
+    "Progman",
+    "WorkerW",
+    "Shell_TrayWnd",
+    "NotifyIconOverflowWindow",
+];
+
+fn is_ignored_foreground_class(class: &str) -> bool {
+    IGNORED_FOREGROUND_CLASSES.contains(&class)
+}
+
+#[cfg(windows)]
+fn idle_seconds_internal() -> u32 {
+    use windows::Win32::System::SystemInformation::GetTickCount;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+    let mut info = LASTINPUTINFO {
+        cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+        dwTime: 0,
+    };
+    // 失败就当「刚动过」，让桌宠闭嘴而不是乱说话
+    if !unsafe { GetLastInputInfo(&mut info) }.as_bool() {
+        return 0;
+    }
+    idle_seconds_from_ticks(unsafe { GetTickCount() }, info.dwTime)
+}
+
+#[cfg(not(windows))]
+fn idle_seconds_internal() -> u32 {
+    0
+}
+
+#[cfg(windows)]
+fn foreground_fullscreen_internal(app: &tauri::AppHandle) -> bool {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    };
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowRect,
+    };
+
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_invalid() {
+        return false;
+    }
+    // 自己（含气泡窗）永远不算「他人全屏」，否则桌宠会把自己藏起来
+    if let Some(w) = app.get_webview_window("main") {
+        if let Ok(own) = w.hwnd() {
+            if own == hwnd {
+                return false;
+            }
+        }
+    }
+
+    let mut buffer = [0u16; 64];
+    let written = unsafe { GetClassNameW(hwnd, &mut buffer) };
+    if written <= 0 {
+        return false;
+    }
+    let class = String::from_utf16_lossy(&buffer[..written as usize]);
+    if is_ignored_foreground_class(&class) {
+        return false;
+    }
+
+    let mut win_rect = RECT::default();
+    if unsafe { GetWindowRect(hwnd, &mut win_rect) }.is_err() {
+        return false;
+    }
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY) };
+    if monitor.is_invalid() {
+        return false;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return false;
+    }
+    rect_covers_monitor(
+        [win_rect.left, win_rect.top, win_rect.right, win_rect.bottom],
+        [info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right, info.rcMonitor.bottom],
+    )
+}
+
+#[cfg(not(windows))]
+fn foreground_fullscreen_internal(_app: &tauri::AppHandle) -> bool {
+    false
 }
 
 #[tauri::command]
@@ -1387,51 +1808,107 @@ fn is_autostart_enabled_cmd() -> bool {
     is_autostart_enabled_internal()
 }
 
-fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
-    use tauri::menu::{MenuBuilder, MenuItemBuilder};
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-
-    let icon = app.default_window_icon().unwrap().clone();
-
-    let autostart_enabled = is_autostart_enabled_internal();
-    let autostart_label = if autostart_enabled {
-        "开机自启：开"
+/// 托盘里「桌宠模式」的菜单文案
+fn pet_menu_label(app: &tauri::AppHandle) -> String {
+    if load_config(app).pet_enabled {
+        String::from("桌宠模式：开")
     } else {
-        "开机自启：关"
-    };
+        String::from("桌宠模式：关")
+    }
+}
+
+fn autostart_menu_label() -> String {
+    if is_autostart_enabled_internal() {
+        String::from("开机自启：开")
+    } else {
+        String::from("开机自启：关")
+    }
+}
+
+/// 托盘的唯一 id：改文案要靠它找回 TrayIcon
+const TRAY_ID: &str = "main";
+
+/// 按当前配置重建托盘菜单。菜单文案是配置的投影，凡是改了配置的地方都重建一次，
+/// 而不是抓着旧的 MenuItem 句柄 set_text——设置面板那条路径拿不到句柄，而且换过菜单
+/// 之后旧句柄指向的项已经不在屏上了，改了也看不见。
+fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
     let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
-    let autostart = MenuItemBuilder::with_id("autostart", autostart_label).build(app)?;
-    let autostart_clone = autostart.clone();
+    let pet = MenuItemBuilder::with_id("pet", pet_menu_label(app)).build(app)?;
+    let autostart = MenuItemBuilder::with_id("autostart", autostart_menu_label()).build(app)?;
     let separator = tauri::menu::PredefinedMenuItem::separator(app)?;
     let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
-    let menu = MenuBuilder::new(app)
-        .items(&[&show, &autostart, &separator, &quit])
-        .build()?;
+    MenuBuilder::new(app)
+        .items(&[&show, &pet, &autostart, &separator, &quit])
+        .build()
+}
 
-    let tray = TrayIconBuilder::new()
+fn refresh_tray_menu(app: &tauri::AppHandle) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        if let Ok(menu) = tray_menu(app) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+/// 显示主窗（可选抢焦点），并告诉前端「画面又可见了」。
+/// 桌宠的动画必须跟着可见性暂停/恢复：隐藏到托盘后还继续解码就是白烧 CPU。
+/// hide/show 的调用点分散在托盘与窗口事件里，所以统一从这个函数走。
+fn reveal_main(app: &tauri::AppHandle, focus: bool) {
+    use tauri::Emitter;
+
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = w.show();
+    if focus {
+        let _ = w.set_focus();
+    }
+    let _ = app.emit("pet-visibility-changed", true);
+}
+
+/// 隐藏主窗到托盘，并通知前端暂停动画
+fn hide_main_to_tray(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+        let _ = app.emit("pet-visibility-changed", false);
+    }
+}
+
+fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
+    use tauri::Emitter;
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let icon = app.default_window_icon().unwrap().clone();
+    let menu = tray_menu(&app.handle().clone())?;
+
+    let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .menu(&menu)
         .tooltip("每日委托模拟器")
         .on_menu_event(move |app, event| {
             let id = event.id().as_ref();
             match id {
-                "show" => {
-                    if let Some(w) = app.get_webview_window("main") {
-                        let _ = w.show();
-                        let _ = w.set_focus();
-                    }
+                "show" => reveal_main(app, true),
+                "pet" => {
+                    // 只改配置并通知前端，形态与几何一律由前端的 setForm 落位——
+                    // 窗口尺寸/焦点这套调用必须只有一个主人，否则会和 CSS 动画抢时序
+                    let mut config = load_config(app);
+                    config.pet_enabled = !config.pet_enabled;
+                    enforce_pet_form(&mut config);
+                    save_config(app, &config);
+                    refresh_tray_menu(app);
+                    // 刚打开桌宠时窗口可能正藏在托盘里，不显示出来用户看不到任何变化
+                    reveal_main(app, false);
+                    let _ = app.emit("ui-state-changed", ());
                 }
                 "autostart" => {
-                    let new_state =
-                        toggle_autostart_internal().unwrap_or_else(|_| is_autostart_enabled_internal());
-                    let label = if new_state {
-                        "开机自启：开"
-                    } else {
-                        "开机自启：关"
-                    };
-                    let _ = autostart_clone.set_text(label);
+                    toggle_autostart_internal().ok();
+                    refresh_tray_menu(app);
                 }
                 "quit" => app.exit(0),
                 _ => {}
@@ -1444,11 +1921,7 @@ fn build_tray(app: &tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::er
                 ..
             } = event
             {
-                let app = tray.app_handle();
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                reveal_main(tray.app_handle(), true);
             }
         })
         .build(app)?;
@@ -1572,6 +2045,262 @@ mod tests {
         c.theme = String::new();
         normalize_theme(&mut c);
         assert_eq!(c.theme, "light");
+    }
+
+    #[test]
+    fn normalize_pet_config_clamps_out_of_range() {
+        let mut c = AppConfig::default();
+        // 超上限 / 低于下限 / NaN / inf 一律回默认，绝不让前端拿到 NaN 去算几何
+        c.pet_scale = 2.0;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_scale, 1.0);
+        c.pet_scale = 0.1;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_scale, 1.0);
+        c.pet_scale = f32::NAN;
+        normalize_pet_config(&mut c);
+        assert!(c.pet_scale.is_finite());
+        // 档位越界回默认档
+        c.pet_action_index = 99;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_action_index, default_pet_action_index());
+        // 宽限期离谱（手改 config.json）回默认
+        c.pet_auto_collapse_ms = PET_COLLAPSE_MS_MAX + 1;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_auto_collapse_ms, default_pet_collapse_ms());
+    }
+
+    #[test]
+    fn normalize_pet_config_keeps_valid_values() {
+        let mut c = AppConfig::default();
+        c.pet_scale = 1.4;
+        c.pet_action_index = 5;
+        c.pet_auto_collapse_ms = 3_000;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_scale, 1.4);
+        assert_eq!(c.pet_action_index, 5);
+        assert_eq!(c.pet_auto_collapse_ms, 3_000);
+        // 0 是「不自动缩回」的合法取值，不能被当成「缺失」纠偏掉
+        c.pet_auto_collapse_ms = 0;
+        normalize_pet_config(&mut c);
+        assert_eq!(c.pet_auto_collapse_ms, 0);
+    }
+
+    #[test]
+    fn normalize_form_falls_back_to_note() {
+        let mut c = AppConfig::default();
+        assert_eq!(c.form, "note");
+        c.form = String::from("bogus");
+        normalize_form(&mut c);
+        assert_eq!(c.form, "note");
+        c.form = String::from("pet");
+        normalize_form(&mut c);
+        assert_eq!(c.form, "pet");
+    }
+
+    #[test]
+    fn disabling_pet_forces_note_form() {
+        let mut c = AppConfig::default();
+        c.pet_enabled = true;
+        c.form = String::from("pet");
+        enforce_pet_form(&mut c);
+        assert_eq!(c.form, "pet");
+
+        c.pet_enabled = false;
+        enforce_pet_form(&mut c);
+        assert_eq!(c.form, "note");
+    }
+
+    #[test]
+    fn idle_seconds_survives_tick_wraparound() {
+        assert_eq!(idle_seconds_from_ticks(1_000, 0), 1);
+        assert_eq!(idle_seconds_from_ticks(65_000, 5_000), 60);
+        // GetTickCount 约 49.7 天回绕一次。回绕点之后若用减法会得到负数，
+        // 转成 u32 就是四十多亿秒——桌宠会从此「主人永远不在空闲期」地闭嘴。
+        assert_eq!(idle_seconds_from_ticks(2_000, u32::MAX - 3_000), 5);
+    }
+
+    #[test]
+    fn fullscreen_requires_covering_the_monitor() {
+        let screen = [0, 0, 1920, 1080];
+        assert!(rect_covers_monitor([0, 0, 1920, 1080], screen));
+        // 略超出边界的全屏实现（部分游戏/投屏）仍然算
+        assert!(rect_covers_monitor([-1, -1, 1921, 1081], screen));
+        // 多屏副屏上的全屏：窗口坐标相对整块桌面，显示器矩形也相对整块桌面
+        assert!(rect_covers_monitor([1920, 0, 3840, 1080], [1920, 0, 3840, 1080]));
+        // 让出任务栏（工作区尺寸）不是全屏，不该因此躲起来
+        assert!(!rect_covers_monitor([0, 0, 1920, 1040], screen));
+        // 普通最大化窗口的边框/标题栏在屏幕外一点点是可能的，但右下角必须盖住
+        assert!(!rect_covers_monitor([8, 8, 1912, 1072], screen));
+    }
+
+    #[test]
+    fn desktop_shell_is_not_somebody_elses_fullscreen() {
+        assert!(is_ignored_foreground_class("Progman"));
+        assert!(is_ignored_foreground_class("WorkerW"));
+        assert!(is_ignored_foreground_class("Shell_TrayWnd"));
+        assert!(!is_ignored_foreground_class("Chrome_WidgetWin_1"));
+        assert!(!is_ignored_foreground_class(""));
+    }
+
+    #[test]
+    fn old_config_without_pet_fields_loads_with_defaults() {
+        // 桌宠化之前的 config.json 原样（无任何 pet_* 字段）必须能无缝升级：
+        // 缺失的桌宠开关取 false、形态取 note，用户不会莫名其妙进入桌宠态
+        let legacy = r#"{"close_to_tray":false,"opacity":0.5,"yuan_shi":88,"mora":300,
+            "streak":2,"weekly_settled_week":"2026-10-12","alarm_interval":600,
+            "alarm_duration":15,"skin_enabled":true,"theme":"sky"}"#;
+        let mut c: AppConfig = serde_json::from_str(legacy).unwrap();
+        normalize_alarm_config(&mut c);
+        normalize_theme(&mut c);
+        normalize_form(&mut c);
+        normalize_pet_config(&mut c);
+        assert_eq!(c.yuan_shi, 88);
+        assert_eq!(c.mora, 300);
+        assert_eq!(c.theme, "sky");
+        assert!(!c.pet_enabled);
+        assert_eq!(c.form, "note");
+        assert_eq!(c.pet_scale, 1.0);
+        assert!(c.pet_hide_on_fullscreen);
+        assert!(c.pet_x.is_none());
+    }
+
+    #[test]
+    fn pet_config_survives_json_roundtrip() {
+        let mut c = AppConfig::default();
+        c.pet_enabled = true;
+        c.form = String::from("pet");
+        c.pet_scale = 1.3;
+        c.pet_action_index = 4;
+        c.pet_auto_collapse_ms = 1_200;
+        c.pet_x = Some(-120);
+        c.note_w = Some(620);
+        let json = serde_json::to_string(&c).unwrap();
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert!(back.pet_enabled);
+        assert_eq!(back.form, "pet");
+        assert_eq!(back.pet_scale, 1.3);
+        assert_eq!(back.pet_action_index, 4);
+        assert_eq!(back.pet_auto_collapse_ms, 1_200);
+        assert_eq!(back.pet_x, Some(-120));
+        assert_eq!(back.note_w, Some(620));
+    }
+
+    #[test]
+    fn action_index_maps_to_a_real_range() {
+        for i in 0..PET_ACTION_RANGES.len() as u8 {
+            let mut c = AppConfig::default();
+            c.pet_action_index = i;
+            normalize_pet_config(&mut c);
+            let (min, max) = PET_ACTION_RANGES[c.pet_action_index as usize];
+            assert!(min < max, "档位区间应递增，实际 {min}~{max}");
+        }
+    }
+
+    #[test]
+    fn write_config_atomic_keeps_previous_generation() {
+        let dir = std::env::temp_dir().join(format!(
+            "ltn-config-test-{}-{}",
+            std::process::id(),
+            file!().len()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+
+        let mut c = AppConfig::default();
+        c.yuan_shi = 10;
+        let v1 = serde_json::to_string_pretty(&c).unwrap();
+        write_config_atomic(&path, &v1).unwrap();
+        assert!(path.exists());
+        assert!(!config_bak_path(&path).exists());
+
+        c.yuan_shi = 20;
+        let v2 = serde_json::to_string_pretty(&c).unwrap();
+        write_config_atomic(&path, &v2).unwrap();
+
+        // 正式文件是最新内容，上一代留在 .bak
+        let main = fs::read_to_string(&path).unwrap();
+        assert!(main.contains("\"yuan_shi\": 20"));
+        let bak = fs::read_to_string(config_bak_path(&path)).unwrap();
+        assert!(bak.contains("\"yuan_shi\": 10"));
+        // 临时文件不应残留
+        assert!(!dir.join("config.json.tmp").exists());
+
+        // 主文件被截断时，读取应退回 .bak 而不是清空余额
+        fs::write(&path, "{\"close_to_tray\":true,\"opac").unwrap();
+        let recovered: AppConfig =
+            read_config_file(&path).or_else(|| read_config_file(&config_bak_path(&path))).unwrap();
+        assert_eq!(recovered.yuan_shi, 10);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn apply_ui_state_pet_stores_position_only() {
+        let mut c = AppConfig::default();
+        apply_ui_state(&mut c, "pet", -120, 640, Some(620), Some(500));
+        assert_eq!(c.form, "pet");
+        assert_eq!(c.pet_x, Some(-120));
+        assert_eq!(c.pet_y, Some(640));
+        // 宠物态尺寸由 pet_scale 推导，不该被顺手写进便签态那套字段
+        assert_eq!(c.note_w, None);
+        assert_eq!(c.note_x, None);
+    }
+
+    #[test]
+    fn apply_ui_state_note_stores_full_geometry() {
+        let mut c = AppConfig::default();
+        c.form = String::from("pet");
+        c.pet_x = Some(10);
+        c.pet_y = Some(20);
+        apply_ui_state(&mut c, "note", 300, 120, Some(700), Some(560));
+        assert_eq!(c.form, "note");
+        assert_eq!(
+            (c.note_x, c.note_y, c.note_w, c.note_h),
+            (Some(300), Some(120), Some(700), Some(560))
+        );
+        // 宠物态那套保持原值，切换形态不该互相踩
+        assert_eq!(c.pet_x, Some(10));
+    }
+
+    #[test]
+    fn apply_ui_state_ignores_unknown_form() {
+        let mut c = AppConfig::default();
+        c.form = String::from("note");
+        // 非法 form 不改形态，几何写进「当前形态」那一套，不会丢数据
+        apply_ui_state(&mut c, "bogus", 1, 2, Some(3), Some(4));
+        assert_eq!(c.form, "note");
+        assert_eq!(c.note_x, Some(1));
+        assert_eq!(c.pet_x, None);
+    }
+
+    #[test]
+    fn progress_of_matches_settlement_semantics() {
+        let full = "### 每日委托\n\n#### 必做\n\n- [x] A\n\n#### 学习/工作\n\n- [x] B\n\n#### 生活/其他\n\n- [x] C\n\n#### 随手小记\n\n- 灵感\n";
+        let p = progress_of(full);
+        assert_eq!(p.modules_done, 3);
+        assert!(p.triple);
+        assert!(p.has_tasks);
+        // 没写明日委托 -> 该提醒
+        assert!(!p.tomorrow_filled);
+
+        let partial = "### 每日委托\n\n#### 必做\n\n- [x] A\n\n#### 学习/工作\n\n- [ ] B\n\n#### 生活/其他\n\n- [ ] \n\n#### 随手小记\n\n- 灵感\n";
+        let p = progress_of(partial);
+        assert_eq!(p.modules_done, 1);
+        assert!(!p.triple);
+        assert!(p.has_tasks);
+
+        // 全是空白占位：一条实项都没有，has_tasks=false（宠物不该夸空气）
+        let blank = "### 每日委托\n\n#### 必做\n\n- [ ] \n\n#### 学习/工作\n\n- [ ] \n\n#### 生活/其他\n\n- [ ] \n\n#### 随手小记\n\n- \n";
+        let p = progress_of(blank);
+        assert_eq!(p.modules_done, 0);
+        assert!(!p.has_tasks);
+
+        // 明日委托是引用块 >，出现即算已填
+        let with_tomorrow = "### 每日委托\n\n#### 必做\n\n- [ ] A\n\n#### 学习/工作\n\n- [ ] B\n> 明天交报告\n\n#### 生活/其他\n\n- [ ] \n";
+        let p = progress_of(with_tomorrow);
+        assert!(p.tomorrow_filled);
     }
 
     #[test]
@@ -1833,8 +2562,13 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(
+                    // 桌宠化后一个窗口有两种形态，插件不能再记几何：若退出时恰好是
+                    // 宠物态，下次启动会恢复成一个被 minWidth 夹住的畸形小窗。
+                    // 形态与两套几何由我们自己存（config.json 的 form / *_x / *_y）。
                     tauri_plugin_window_state::StateFlags::all()
-                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE
+                        & !tauri_plugin_window_state::StateFlags::SIZE
+                        & !tauri_plugin_window_state::StateFlags::POSITION,
                 )
                 .build(),
         )
@@ -1867,6 +2601,12 @@ pub fn run() {
             get_skin,
             save_skin,
             remove_skin,
+            get_ui_state,
+            save_ui_state,
+            get_today_progress,
+            set_pet_config,
+            get_idle_seconds,
+            is_foreground_fullscreen,
             check_update,
             download_and_install,
         ])
@@ -1883,18 +2623,18 @@ pub fn run() {
             let _tray = build_tray(app)?;
 
             let window = app.get_webview_window("main").unwrap();
-            let w_clone = window.clone();
 
             if !std::env::args().any(|a| a == "--startup") {
                 let _ = window.show();
             }
 
+            let event_handle = app_handle.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    let config = load_config(&app_handle);
+                    let config = load_config(&event_handle);
                     if config.close_to_tray {
                         api.prevent_close();
-                        let _ = w_clone.hide();
+                        hide_main_to_tray(&event_handle);
                     }
                 }
             });
