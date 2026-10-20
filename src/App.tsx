@@ -207,7 +207,11 @@ function App() {
         timer = null;
       }
     };
-    const onLeave = () => {
+    const onLeave = (e: PointerEvent) => {
+      // 按住键离开 = 正在拖这扇窗（标题栏拖拽走 OS 循环，pointerup 根本不会回到 WebView），
+      // 此时排缩回会在拖拽中途就把窗缩成宠物盒，setSize 还可能被拖拽循环吃掉，
+      // 结果是「和便签一样大的宠物」。等下一次真正空手移出再收。
+      if (e.buttons !== 0) return;
       cancel();
       timer = setTimeout(() => void useNoteStore.getState().setForm("pet"), autoMs);
     };

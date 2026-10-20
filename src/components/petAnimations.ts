@@ -33,6 +33,11 @@ export interface PetActionRule {
   HourFrom?: number;
   HourTo?: number;
   Gate?: PetGate;
+  /**
+   * Idle 段默认循环播（素材只有十秒左右，不循环的话宠物在两次换段之间像张死图）。
+   * 但「垂头叹气」这类情绪动作循环起来就是宠物卡住了，标 Loop:false 让它只演一遍。
+   */
+  Loop?: boolean;
 }
 
 export interface PetAction extends PetActionRule {
@@ -104,14 +109,16 @@ export function computePetGates(
 export function pickWeighted(
   pool: PetPool,
   facts: { hour: number; gates: Set<PetGate> },
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  where?: (a: PetAction) => boolean
 ): PetAction | null {
   const candidates = PET_ACTIONS.filter(
     (a) =>
       a.Pool === pool &&
       a.Weight > 0 &&
       hourMatches(a, facts.hour) &&
-      (!a.Gate || facts.gates.has(a.Gate))
+      (!a.Gate || facts.gates.has(a.Gate)) &&
+      (!where || where(a))
   );
   if (candidates.length === 0) return null;
   const total = candidates.reduce((sum, a) => sum + a.Weight, 0);
@@ -121,4 +128,19 @@ export function pickWeighted(
     if (roll <= 0) return a;
   }
   return candidates[candidates.length - 1];
+}
+
+/**
+ * 常驻画面：只有「Idle 且没被标 Loop:false」的段才允许循环。
+ * 素材清一色 10 秒一段，循环一段「哼歌 / 写代码」就等于每 10 秒把同一个手势重演一遍，
+ * 和用户设的 120–180 s 换段间隔完全脱钩——看起来就是「安静档位下还在不停做表情」。
+ */
+export const isAmbient = (a: PetAction) => a.Pool === "Idle" && a.Loop !== false;
+
+/** 挑一段常驻画面（呼吸待机 / 夜里的小憩），一次性动作演完就回到这里 */
+export function pickAmbient(
+  facts: { hour: number; gates: Set<PetGate> },
+  random: () => number = Math.random
+): PetAction | null {
+  return pickWeighted("Idle", facts, random, isAmbient);
 }

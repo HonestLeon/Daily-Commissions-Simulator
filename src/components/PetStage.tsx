@@ -6,7 +6,9 @@ import {
   actionByFile,
   computePetGates,
   hourMatches,
+  isAmbient,
   petAssetsReady,
+  pickAmbient,
   pickWeighted,
   type PetAction,
   type PetGate,
@@ -15,6 +17,16 @@ import {
 // 位移超过这个数才算「拖拽」而不是「单击」。宠物窗只有 175×221，不区分就会在
 // 用户想点开它时把整只宠物拖走（参考项目同样用 4px 阈值）。
 const DRAG_THRESHOLD = 4;
+
+// PET_ACTION_RANGES 的下标：4=安静(120–180s)、5=很安静(180–300s)。
+// 这两档用户要的是「安静」，而素材是按标准节奏录的 10 秒循环，原速放会觉得手脚太快。
+const QUIET_INDEX_MIN = 4;
+const QUIET_RATE = 0.5;
+
+/** 常驻段在安静档以上放慢放；一次性动作保持原速（那是「演一遍」的手势，放慢会显得拖沓） */
+function clipRate(action: PetAction, actionIndex: number): number {
+  return isAmbient(action) && actionIndex >= QUIET_INDEX_MIN ? QUIET_RATE : 1;
+}
 
 interface PetFacts {
   hour: number;
@@ -48,6 +60,8 @@ export default function PetStage() {
   const dailyDone = useRef(false);
   const down = useRef<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
+  // 当前在演的那段：onEnded 要靠它区分「演完回常驻」还是「常驻自己循环」
+  const current = useRef<PetAction | null>(null);
 
   /** 挑动作所需的事实：门控来自 Rust 侧算好的今日进度（唯一权威来源） */
   const facts = (): PetFacts => {
@@ -62,11 +76,14 @@ export default function PetStage() {
     const el = nextKey === "a" ? vA.current : vB.current;
     const old = nextKey === "a" ? vB.current : vA.current;
     if (!el) return;
-    // Idle 段循环播放：素材是一段十秒左右的表演，播完就静止的话，宠物在两次换段之间
-    // （默认 45–90 秒）会看起来像一张死图。交互段（点击/拖拽/请安/刷牙）不循环，播完接回 Idle。
-    el.loop = action.Pool === "Idle";
+    // 只有「常驻画面」那几段（呼吸待机、夜里的小憩）才循环；哼歌 / 写代码 / 垂头叹气
+    // 这类是演一遍的手势，循环起来等于每 10 秒重演一次，和换段间隔脱钩，看着像卡住。
+    el.loop = isAmbient(action);
+    current.current = action;
     el.src = action.url;
     el.load();
+    // load() 会把 playbackRate 复位，所以速率必须在它之后设
+    el.playbackRate = clipRate(action, useNoteStore.getState().petActionIndex);
     const start = () => {
       if (gen !== generation.current) return; // 已被更新的播放作废
       if (watchdog.current) clearTimeout(watchdog.current);
@@ -102,7 +119,7 @@ export default function PetStage() {
     timer.current = setTimeout(() => nextIdleRef.current(), delay);
   }, []);
 
-  /** 接回「常驻画面」：时段事件（每天一次）优先，否则从 Idle 池挑一段循环播 */
+  /** 接回「常驻画面」：时段事件（每天一次）优先，否则从 Idle 池挑一段；两次挑选之间由常驻段循环兜着 */
   const nextIdle = useCallback(() => {
     const f = facts();
     const daily = PET_ACTIONS.find(
@@ -110,7 +127,7 @@ export default function PetStage() {
     );
     if (daily) {
       dailyDone.current = true;
-      play(daily); // 不循环，播完 onEnded 会再接回 Idle
+      play(daily); // 不循环，播完 onEnded 会接回常驻画面
     } else {
       play(pickWeighted("Idle", f));
     }
@@ -118,8 +135,28 @@ export default function PetStage() {
   }, [armTimer, play]);
   nextIdleRef.current = nextIdle;
 
-  /** 交互段（点击 / 拖拽 / 请安 / 刷牙）播完接回常驻画面，不留静止的最后一帧 */
-  const onActionEnded = useCallback(() => nextIdleRef.current(), []);
+  /**
+   * 一次性动作（点击 / 拖拽 / 请安 / 刷牙 / 哼歌 / 写代码 / 叹气）演完回到常驻画面。
+   * 这里故意不重排定时器：换段节奏只由「动作间隔」说了算。否则每演完一段就顺手挑下一段，
+   * 用户设的 120–180 s 会被压成「素材长度 + 一点点」，安静档位照样不停做表情。
+   */
+  const onActionEnded = useCallback(() => {
+    const a = current.current;
+    if (!a || isAmbient(a)) return; // 常驻段自己循环，压根到不了 ended
+    play(pickAmbient(facts()));
+  }, [play]);
+
+  /**
+   * 换「动作间隔」档位时立刻改正在循环那段的速率：设置面板的契约是改完即生效，
+   * 而常驻段是无限循环的，不主动改 rate 就得等下一次换段才看得到变化。
+   */
+  const petActionIndex = useNoteStore((s) => s.petActionIndex);
+  useEffect(() => {
+    const el = layerRef.current === "a" ? vA.current : vB.current;
+    const a = current.current;
+    if (!el || !a) return;
+    el.playbackRate = clipRate(a, petActionIndex);
+  }, [petActionIndex]);
 
   useEffect(() => {
     if (!useVideo) return;

@@ -211,6 +211,9 @@ function snapToWorkArea(
 async function expandToNoteForm(geom: Geometry | null, pinMode: PinMode) {
   const win = getCurrentWindow();
   await win.setFocusable(true).catch(() => {});
+  // 便签要能拉大，也要那圈投影；宠物反过来
+  await win.setResizable(true).catch(() => {});
+  await win.setShadow(true).catch(() => {});
   await win.setMinSize(new LogicalSize(NOTE_MIN_W, NOTE_MIN_H)).catch(() => {});
   // 存档几何是物理像素，下限是逻辑像素：统一到逻辑做取舍，再乘回物理
   const sf = await scaleFactorOrDefault();
@@ -234,6 +237,12 @@ async function collapseToPetForm(petPos: { x: number; y: number } | null, scale:
   const cur = await readWindowGeometry();
   // 不先放开下限就会被夹在 340×300，缩不动还看起来像「没反应」
   await win.setMinSize(null).catch(() => {});
+  // 宠物不需要拉伸：去掉 resizable 就是去掉 WS_THICKFRAME —— 那圈看不见的可拖边框
+  // （200% 下实测 26×15 物理像素）既白吃桌面点击，又让窗口比包围盒大一圈；
+  // 投影一并关掉，透明窗四周就不会显出一层灰边。必须在 setSize 之前做，
+  // 否则边框没了之后客户区尺寸会重算一次，量出来的尺寸又不是我们要的。
+  await win.setResizable(false).catch(() => {});
+  await win.setShadow(false).catch(() => {});
   const sf = await scaleFactorOrDefault();
   const w = Math.round(PET_BOX_W * scale * sf);
   const h = Math.round(PET_BOX_H * scale * sf);
@@ -297,6 +306,8 @@ function startAlarmTimer(intervalMs: number, durationMs: number) {
     }
     try {
       const win = getCurrentWindow();
+      // 用户可能先把窗最小化了：show() 解不开最小化，闹钟会「响了但什么都没出现」
+      await win.unminimize();
       await win.show();
       await win.setAlwaysOnTop(true);
       // 从这一行起画面重新可见，桌宠若在隐藏中攒下的暂停要放开

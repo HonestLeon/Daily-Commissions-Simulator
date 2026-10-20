@@ -976,6 +976,17 @@ button.settings-row:focus-visible {
 
 /* ── 桌宠态 ── */
 
+/* .note-root 是桌宠化插进 .app 与 .app-body 之间的新中间层，必须自己续上高度链：
+   .app 是 flex 列，这里就得 flex:1 + min-height:0 + 列方向，否则 .app-body{flex:1}
+   的父高变成 auto → .milkdown-wrapper 永远不会内部溢出 → 右侧滚动条消失，
+   超出窗口的内容被 .app 的 overflow:hidden 直接裁掉。 */
+.note-root {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
 /* 整窗就是那只宠物：卡片外壳、面板底色、皮肤层都必须撤掉，否则透明窗里会出现一块
    不透明的矩形。窗口尺寸已等于宠物包围盒，不留透明余量（§5.1：我们没有逐像素穿透）。 */
 .app[data-form="pet"] {

@@ -9,7 +9,8 @@
     "Id": "悠闲哼歌",
     "File": "idle-hum",
     "Pool": "Idle",
-    "Weight": 60
+    "Weight": 60,
+    "Loop": false
   },
   {
     "Id": "原地小憩沉眠",
@@ -24,6 +25,7 @@
     "File": "mood-work",
     "Pool": "Idle",
     "Weight": 80,
+    "Loop": false,
     "HourFrom": 9,
     "HourTo": 19
   },
@@ -31,7 +33,8 @@
     "Id": "工作状态-垂头叹气冒汗",
     "File": "mood-sulk",
     "Pool": "Idle",
-    "Weight": 300,
+    "Weight": 120,
+    "Loop": false,
     "Gate": "incomplete"
   },
   {

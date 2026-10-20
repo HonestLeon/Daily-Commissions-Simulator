@@ -1862,6 +1862,9 @@ fn reveal_main(app: &tauri::AppHandle, focus: bool) {
     let Some(w) = app.get_webview_window("main") else {
         return;
     };
+    // 最小化的窗光靠 show() 叫不回来：SW_SHOW 只解除「隐藏」，不解除「最小化」，
+    // 所以点标题栏最小化之后再点托盘「显示窗口」会毫无反应。必须先 unminimize。
+    let _ = w.unminimize();
     let _ = w.show();
     if focus {
         let _ = w.set_focus();
