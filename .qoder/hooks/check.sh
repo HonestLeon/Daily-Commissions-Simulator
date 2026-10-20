@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 收尾自检（Stop 事件）：tsc 类型检查 + 版本号四处一致 + 文档同步提醒。
+# 收尾自检（Stop 事件）：tsc 类型检查 + 版本号四处一致 + 文档同步提醒 + build-release.ps1 编码（BOM/LF）。
 # 只提示、不阻断：始终以 0 退出，报告通过 additionalContext 注入对话。
 set -u
 
@@ -44,6 +44,14 @@ if printf '%s\n' "$changed" | grep -qE '^src/|^src-tauri/src/'; then
   if ! printf '%s\n' "$changed" | grep -qE '^(README\.md|docs/.*\.md)$'; then
     note "[文档] 有代码改动但 README.md / docs/*.md 未同步：新功能要补 README「更新日志」，影响使用则更新 docs/使用说明.md。"
   fi
+fi
+
+# ── 4. build-release.ps1 编码闸门：UTF-8 BOM + 全 LF ──
+if [ -f build-release.ps1 ]; then
+  bom=$(od -An -tx1 -N3 build-release.ps1 | tr -dc '0-9a-f')
+  [ "$bom" = "efbbbf" ] || note "[编码] build-release.ps1 缺 UTF-8 BOM（首三字节=$bom）：Windows PowerShell 5.1 会按 GBK 解析，脚本里的中文与中文文件名校验全乱。只能局部 Edit，别整文件重写。"
+  ncr=$(tr -dc '\r' < build-release.ps1 | wc -c | tr -dc '0-9')
+  [ "${ncr:-0}" = "0" ] || note "[编码] build-release.ps1 有 $ncr 个 CR（$PWD）：仓库无 .gitattributes、core.autocrlf=false，全仓库文本均为 LF。"
 fi
 
 if [ -n "$msg" ]; then

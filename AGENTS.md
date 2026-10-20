@@ -13,10 +13,11 @@ This file provides guidance to the AI agent when working with code in this repos
   自检一行：`"/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` 有输出即正常。本机 2026-10-15 已装回 Build Tools（MSVC 14.44.35207 + Windows SDK 10.0.26100），已验证 `cargo test` 23/23 通过、**在 Git Bash 里也能跑**（rustc 走 vswhere 定位，不会被 PATH 上的 MSYS `link.exe` 带偏）。缺了就按 AGENTS.local.md 的安装命令补，别改代码绕；`LNK1181: 无法打开 dbghelp.lib` 说明 SDK 的 `Lib\…\um\x64` 还没装齐（安装未完成或缺 Windows SDK 组件），不是代码问题。
 - `npm run release` — 执行 `build-release.ps1`（`tauri build` + 组装），产出 gitignored 的 `发布包/`。`npm run release:doc` 加 `-SkipBuild`，复用 `src-tauri/target/release/` 里的现有产物，产物不存在会直接抛错。
   ⚠ `build-release.ps1` 是 **UTF-8 带 BOM**（首三字节 239,187,191），里面的中文文件名与产物校验全靠 BOM 才能被 Windows PowerShell 5.1 正确解析。改它只能用局部 Edit 保留 BOM，**不要整文件重写**——Write/Prettier 产出的是无 BOM UTF-8，脚本会被当 GBK 读，中文变乱码后语法直接崩（我踩过两次）。`.prettierignore` 不含 `.ps1`，Prettier 也不会处理它，别指望格式化工具帮你改写。
+  行尾：全仓库文本一律 **LF**（无 `.gitattributes`、`core.autocrlf=false`，字节即所存；实测 PowerShell 5.1 对纯 LF 脚本毫无警告，别为它转 CRLF）。写 shell 字节自检时注意，Git Bash 里 `od`/`grep` 输出经管道可能混进 `\r`，要 `tr -dc '0-9a-f'` / `tr -dc '\r' | wc -c` 过滤，否则 BOM 判断会假阳性（我踩过一次）。
 
 ## 已配置的 hooks（`.qoder/settings.json`，团队共享）
 
-- `Stop` → `.qoder/hooks/check.sh`：收尾自检 = tsc 类型检查 + 版本号四处一致 + 「改了代码没改文档」提醒。只提示不阻断，报告以 `additionalContext` 回灌。
+- `Stop` → `.qoder/hooks/check.sh`：收尾自检 = tsc 类型检查 + 版本号四处一致 + `build-release.ps1` 编码（UTF-8 BOM / 无 CR）+ 「改了代码没改文档」提醒。只提示不阻断，报告以 `additionalContext` 回灌。
 - `PreToolUse/Bash` → `.qoder/hooks/rust-shell-guard.sh`：命令确实是 `cargo …` / `npm run tauri …` 时，**运行时用 vswhere 探测** MSVC 组件在不在，缺失才提示（工具链装好后自动闭嘴；已避开 `src-tauri/`、`Cargo.toml` 这类路径误报）。只提示不阻断。
 - `PostToolUse/Edit|Write` → `.qoder/hooks/auto-format.sh`：对改动过的 ts/tsx/js/jsx/json/css 自动跑 Prettier。`*.md` 故意排除（中文表格与段落重排噪音大），需要时手动 `npm run format`。
 - 要调整检查内容就改这三个脚本；别再往本文件里堆命令。
