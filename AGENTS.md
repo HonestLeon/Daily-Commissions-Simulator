@@ -10,7 +10,7 @@ This file provides guidance to the AI agent when working with code in this repos
 - `npm run format` / `npm run format:check` — Prettier（无 ESLint）。配置：`printWidth 100`、`trailingComma es5`、双引号、2 空格、`endOfLine lf`；`.prettierignore` 排除了 lock/产物/工具本地配置。
 - `cargo test`（在 `src-tauri/`）— Rust 单元测试全部内联在 `src-tauri/src/lib.rs` 的 `#[cfg(test)] mod tests`。
   ⚠ Rust 在 Windows 上链接阶段**必须**有 MSVC 工具链 + Windows SDK（rustc 只编译，链接交给 `link.exe`）。二者由「Build Tools for Visual Studio 2022」的 `Microsoft.VisualStudio.Workload.VCTools` 负载提供，与用不用 VS Code 无关。rustc 靠 `…\Microsoft Visual Studio\Installer\vswhere.exe` + 注册表定位它们，找不到才退回 PATH——PATH 上的 `Git\usr\bin\link.exe`（MSYS 建硬链接小工具）会导致 `link: extra operand`，PowerShell 里则报 `linker 'link.exe' not found`。
-  自检一行：`"/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` 有输出即正常。本机 2026-10-15 已装回 Build Tools（MSVC 14.44.35207 + Windows SDK 10.0.26100），已验证 `cargo test` 23/23 通过、**在 Git Bash 里也能跑**（rustc 走 vswhere 定位，不会被 PATH 上的 MSYS `link.exe` 带偏）。缺了就按 AGENTS.local.md 的安装命令补，别改代码绕；`LNK1181: 无法打开 dbghelp.lib` 说明 SDK 的 `Lib\…\um\x64` 还没装齐（安装未完成或缺 Windows SDK 组件），不是代码问题。
+  自检一行：`"/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath` 有输出即正常。本机 2026-10-15 已装回 Build Tools（MSVC 14.44.35207 + Windows SDK 10.0.26100），已验证 `cargo test` 全部通过（用例数会随功能增减，别在这里记具体数字）、**在 Git Bash 里也能跑**（rustc 走 vswhere 定位，不会被 PATH 上的 MSYS `link.exe` 带偏）。缺了就按 AGENTS.local.md 的安装命令补，别改代码绕；`LNK1181: 无法打开 dbghelp.lib` 说明 SDK 的 `Lib\…\um\x64` 还没装齐（安装未完成或缺 Windows SDK 组件），不是代码问题。
 - `npm run release` — 执行 `build-release.ps1`（`tauri build` + 组装），产出 gitignored 的 `发布包/`。`npm run release:doc` 加 `-SkipBuild`，复用 `src-tauri/target/release/` 里的现有产物，产物不存在会直接抛错。
   ⚠ `build-release.ps1` 是 **UTF-8 带 BOM**（首三字节 239,187,191），里面的中文文件名与产物校验全靠 BOM 才能被 Windows PowerShell 5.1 正确解析。改它只能用局部 Edit 保留 BOM，**不要整文件重写**——Write/Prettier 产出的是无 BOM UTF-8，脚本会被当 GBK 读，中文变乱码后语法直接崩（我踩过两次）。`.prettierignore` 不含 `.ps1`，Prettier 也不会处理它，别指望格式化工具帮你改写。
   行尾：全仓库文本一律 **LF**（无 `.gitattributes`、`core.autocrlf=false`，字节即所存；实测 PowerShell 5.1 对纯 LF 脚本毫无警告，别为它转 CRLF）。写 shell 字节自检时注意，Git Bash 里 `od`/`grep` 输出经管道可能混进 `\r`，要 `tr -dc '0-9a-f'` / `tr -dc '\r' | wc -c` 过滤，否则 BOM 判断会假阳性（我踩过一次）。
@@ -33,9 +33,11 @@ This file provides guidance to the AI agent when working with code in this repos
 ## 数据与运行时
 
 - 用户数据在 `%APPDATA%\com.liurr.lightweight-sticky-notes\`（`config.json`、`notes_index.json`、`notes/<uuid>.md`）。dev 与正式版共用同一目录，所以 `npm run tauri dev` 会真实结算并改写用户当天的委托数据。
-- `invoke` 的字段名用 camelCase（`newTitle`、`closeToTray`、`dataUrl`、`setupUrl`），Rust 命令签名是 snake_case，由 Tauri 自动转换。
-- 更新检查打的是 Gitee：`repos/Honest_Leon/lightweight-sticky-notes/releases/latest`，`tag_name` 即版本号，附件文件名必须含 `setup` / `portable`。`git remote` 指向 GitHub（`Daily-Commissions-Simulator`），但发布物走 Gitee，且包名 / 数据目录标识 / Gitee 仓库名始终保持 `lightweight-sticky-notes`，不要「顺手改名」。
-- 开机自启直接写 `HKCU\...\Run` 注册表，且 `cfg(debug_assertions)` 下被拒绝——只能在发布版验证该行为。
+- 单实例用命名互斥量（`Local\daily-commissions-instance`）保护，dev 与正式版同样生效；开发前先退出托盘里的正式版，否则 `tauri dev` 会直接退出并唤起正式版窗口。
+- `invoke` 的字段名用 camelCase（`newTitle`、`dataUrl`、`setupUrl`），Rust 命令签名是 snake_case，由 Tauri 自动转换。
+- 更新检查打的是 GitHub：`api.github.com/repos/HonestLeon/Daily-Commissions-Simulator/releases/latest`，`tag_name` 即版本号，附件文件名必须含 `setup` / `portable`（实测附件名形如 `Daily_Commissions_Simulator_0.2.6_x64-{setup,portable}.exe`）。请求必须带 `User-Agent`（否则 403），匿名额度按 IP 每小时 60 次，靠 `UPDATE_CACHE` 的 10 分钟缓存兜着。标题栏应用图标的链接是同一个仓库（`TitleBar.tsx` 的 `REPO_URL`）。包名 / 数据目录标识仍为 `lightweight-sticky-notes`，不要「顺手改名」。
+- 关闭按钮 = 直接退出：`on_window_event` 在主窗 `CloseRequested` 里 `exit(0)`。必须显式退出——气泡是独立窗口，主窗自己销毁后进程还活着，托盘「显示窗口」就找不到窗了。「最小化到托盘」这个设置项已整体删除（`close_to_tray`、`get/set_close_behavior`、`FirstCloseDialog`）。
+- 开机自启直接写 `HKCU\...\Run` 注册表，且 `cfg(debug_assertions)` 下被拒绝——只能在发布版验证该行为。值数据只有带引号的 exe 路径；早期尾部带 `--startup`（启动即藏进托盘），现在没人读它了，`migrate_autostart_entry` 会把旧值改写掉。
 - 新用到任何窗口 / 插件 API（如 `allow-open-path`、`allow-set-always-on-top`）必须同时加进 `src-tauri/capabilities/default.json`，否则运行时被静默拒绝。
 
 ## Milkdown 编辑器的坑
