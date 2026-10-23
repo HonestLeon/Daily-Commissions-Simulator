@@ -4,6 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import {
   getCurrentWindow,
   currentMonitor,
+  monitorFromPoint,
   LogicalSize,
   PhysicalPosition,
   PhysicalSize,
@@ -12,7 +13,6 @@ import type {
   NoteMeta,
   InitDailyResult,
   WeeklyResult,
-  PinMode,
   AppTheme,
   Form,
   UiState,
@@ -41,8 +41,6 @@ const PET_BOX_W = 175;
 const PET_BOX_H = 221;
 // 缩回时先让 React 把内容换成宠物，再隔一帧改窗口尺寸，避免带着便签布局去 resize
 const PET_SWAP_MS = 60;
-// 缩回锚点：0=贴便签左下角（宠物留在原便签的左下方），1=贴便签右下角
-const PET_ANCHOR_RIGHT = false;
 
 // ── 空闲门控与全屏避让（PR7）──
 
@@ -81,9 +79,49 @@ async function foregroundFullscreen(): Promise<boolean> {
   }
 }
 
+/**
+ * 鼠标左键此刻是否按着。拖动和拉边框都走系统模态循环，那期间 WebView 收不到任何 pointer
+ * 事件，前端自己判断不了「用户是不是正拿着这扇窗」，只能问 OS。非 Tauri / 命令失败返回
+ * false，等价于桌宠化之前的行为。
+ */
+export async function isMouseButtonDown(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("is_mouse_button_down");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 光标此刻是否还在主窗口的外框矩形内。WebView 的 pointerleave 只认客户区，而拉边框靠的
+ * 是那圈隐形边框 —— 指针停在它上面时前端以为「移开了」，其实正准备拖。非 Tauri / 命令
+ * 失败返回 false，等价于桌宠化之前「出了客户区就算离开」的行为。
+ */
+export async function isCursorOnWindow(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("is_cursor_on_window");
+  } catch {
+    return false;
+  }
+}
+
 // 一条还没吐出来的话会被下一条顶掉（sayGen 单调），延迟队列只保留最新的那条。
 let sayGen = 0;
 let sayTimer: ReturnType<typeof setTimeout> | null = null;
+let opacityTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 第一次 fetchUiState 要负责启动落位；之后同形态的 ui-state-changed（动作间隔、
+// 缩回宽限、全屏避让开关）只更新 store，不能再把窗口按旧 noteGeom 重新展开。
+let uiStateLoaded = false;
+
+/** 作废所有还没吐出来的话；离开宠物态时调用，避免气泡挂在便签上 */
+function cancelSay() {
+  sayGen += 1;
+  if (sayTimer) {
+    clearTimeout(sayTimer);
+    sayTimer = null;
+  }
+}
 
 /** 物理像素下的窗口几何（outerPosition + innerSize） */
 interface Geometry {
@@ -134,6 +172,31 @@ async function workAreaPhysical(): Promise<Geometry | null> {
     }
   } catch {
     // 非 Tauri 环境无显示器信息，按不夹取处理
+  }
+  return null;
+}
+
+/**
+ * 指定物理坐标所在显示器的工作区与缩放系数。
+ * 启动恢复时窗口还没被搬到存档位置，currentMonitor() 只会给主屏；
+ * 必须用存档矩形中心去问显示器，否则副屏上的便签/宠物会被夹回主屏。
+ */
+async function workAreaAt(x: number, y: number): Promise<{ wa: Geometry; sf: number } | null> {
+  try {
+    const mon = await monitorFromPoint(x, y);
+    if (mon) {
+      return {
+        wa: {
+          x: mon.workArea.position.x,
+          y: mon.workArea.position.y,
+          w: mon.workArea.size.width,
+          h: mon.workArea.size.height,
+        },
+        sf: mon.scaleFactor || 1,
+      };
+    }
+  } catch {
+    // 非 Tauri 环境或显示器查询被拒绝
   }
   return null;
 }
@@ -204,33 +267,80 @@ function snapToWorkArea(
   return { x: nx, y: ny };
 }
 
+/** 形态对接点挂在矩形的那条竖边上 */
+type Edge = "left" | "right";
+
+/**
+ * 挂在左还是右：看这个矩形（便签或宠物盒）的水平中心落在工作区左半还是右半。
+ * 拿不到工作区就一律靠左——与「贴便签左下角」的老行为一致。
+ */
+function sharedEdge(wa: Geometry | null, box: Geometry): Edge {
+  if (!wa) return "left";
+  return box.x + box.w / 2 < wa.x + wa.w / 2 ? "left" : "right";
+}
+
+/**
+ * 便签 ⇄ 宠物的对接：宠物盒的中心压在便签靠左/靠右那条竖边的中点上，看着就像从便签
+ * 边上探出来的。两个方向互为逆运算，所以把宠物拖到哪儿、单击展开便签就跟到哪儿。
+ */
+function petBoxOnNoteEdge(edge: Edge, note: Geometry, petW: number, petH: number) {
+  const midX = edge === "left" ? note.x : note.x + note.w;
+  return {
+    x: Math.round(midX - petW / 2),
+    y: Math.round(note.y + note.h / 2 - petH / 2),
+  };
+}
+
+/** petBoxOnNoteEdge 的逆运算：便签从宠物中心向工作区里侧长出来 */
+function noteBoxOnPetEdge(edge: Edge, pet: Geometry, noteW: number, noteH: number) {
+  const midX = pet.x + pet.w / 2;
+  return {
+    x: Math.round(edge === "left" ? midX : midX - noteW),
+    y: Math.round(pet.y + pet.h / 2 - noteH / 2),
+  };
+}
+
 /**
  * 展开成便签态。顺序不能反：先把焦点能力与尺寸下限装回去，再落位，最后才由调用方
  * 让 React 渲染便签内容——反过来会出现「175×220 的窗里画一整套便签布局」的闪烁。
+ * `pet` 是宠物此刻的真实几何（从宠物态展开时给），便签就以它为锚点长出来；
+ * 传 null 表示按存档位置落位（启动恢复那类没有宠物的场合）。
  */
-async function expandToNoteForm(geom: Geometry | null, pinMode: PinMode) {
+async function expandToNoteForm(geom: Geometry | null, pet: Geometry | null) {
   const win = getCurrentWindow();
   await win.setFocusable(true).catch(() => {});
   // 便签要能拉大，也要那圈投影；宠物反过来
   await win.setResizable(true).catch(() => {});
   await win.setShadow(true).catch(() => {});
   await win.setMinSize(new LogicalSize(NOTE_MIN_W, NOTE_MIN_H)).catch(() => {});
-  // 存档几何是物理像素，下限是逻辑像素：统一到逻辑做取舍，再乘回物理
-  const sf = await scaleFactorOrDefault();
+  // 存档几何是物理像素，下限是逻辑像素：统一到逻辑做取舍，再乘回物理。
+  // 没有宠物可作锚点时（启动恢复），用存档矩形中心所在显示器的 DPI/工作区；
+  // 宠物在时窗口已经在宠物那块屏上，currentMonitor 是对的。
+  const target =
+    !pet && geom
+      ? { x: Math.round(geom.x + geom.w / 2), y: Math.round(geom.y + geom.h / 2) }
+      : null;
+  const at = target ? await workAreaAt(target.x, target.y) : null;
+  const sf = at?.sf ?? (await scaleFactorOrDefault());
   const logW = geom ? geom.w / sf : NOTE_DEFAULT_W;
   const logH = geom ? geom.h / sf : NOTE_DEFAULT_H;
   const w = Math.round(Math.max(NOTE_MIN_W, logW) * sf);
   const h = Math.round(Math.max(NOTE_MIN_H, logH) * sf);
-  const wa = await workAreaPhysical();
-  const pos = clampToWorkArea(wa, geom?.x ?? 0, geom?.y ?? 0, w, h);
+  const wa = at?.wa ?? (await workAreaPhysical());
+  const base = pet
+    ? noteBoxOnPetEdge(sharedEdge(wa, pet), pet, w, h)
+    : { x: geom?.x ?? 0, y: geom?.y ?? 0 };
+  const pos = clampToWorkArea(wa, base.x, base.y, w, h);
   await win.setSize(new PhysicalSize(w, h)).catch(() => {});
   await win.setPosition(new PhysicalPosition(pos.x, pos.y)).catch(() => {});
-  await win.setAlwaysOnTop(pinMode === "pin").catch(() => {});
+  // 便签不置顶：置顶只属于桌宠态（collapseToPetForm），展开回来就交回正常层级
+  await win.setAlwaysOnTop(false).catch(() => {});
 }
 
 /**
  * 缩回宠物态。宠物恒置顶、恒不吃焦点：点击/显示宠物绝不能把焦点从用户正在打字的地方抢走。
- * 锚点：有存档位置就用存档（用户可能把它拖到别处了），否则贴着便签窗的下沿一角。
+ * 锚点：`petPos` 只在启动按存档落位时给（用户可能把宠物拖到桌面任何角落）；从便签缩回时
+ * 传 null，落点现算为「挂在便签竖边的中点」，这样宠物永远出现在刚刚那张便签的旁边。
  */
 async function collapseToPetForm(petPos: { x: number; y: number } | null, scale: number) {
   const win = getCurrentWindow();
@@ -243,13 +353,15 @@ async function collapseToPetForm(petPos: { x: number; y: number } | null, scale:
   // 否则边框没了之后客户区尺寸会重算一次，量出来的尺寸又不是我们要的。
   await win.setResizable(false).catch(() => {});
   await win.setShadow(false).catch(() => {});
-  const sf = await scaleFactorOrDefault();
+  // 启动按存档位置落位时，宠物可能在副屏/另一个 DPI 的屏幕上：用存档点所在的
+  // 显示器工作区与缩放系数，而不是窗口此刻在主屏上的那一套。
+  const at = petPos ? await workAreaAt(petPos.x, petPos.y) : null;
+  const sf = at?.sf ?? (await scaleFactorOrDefault());
   const w = Math.round(PET_BOX_W * scale * sf);
   const h = Math.round(PET_BOX_H * scale * sf);
-  const x = petPos ? petPos.x : PET_ANCHOR_RIGHT ? cur.x + cur.w - w : cur.x;
-  const y = petPos ? petPos.y : cur.y + cur.h - h;
-  const wa = await workAreaPhysical();
-  const pos = snapToWorkArea(wa, x, y, w, h);
+  const wa = at?.wa ?? (await workAreaPhysical());
+  const anchor = petPos ?? petBoxOnNoteEdge(sharedEdge(wa, cur), cur, w, h);
+  const pos = snapToWorkArea(wa, anchor.x, anchor.y, w, h);
   await win.setSize(new PhysicalSize(w, h)).catch(() => {});
   await win.setPosition(new PhysicalPosition(pos.x, pos.y)).catch(() => {});
   await win.setAlwaysOnTop(true).catch(() => {});
@@ -272,106 +384,23 @@ async function persistFormGeometry(form: Form, geom: Geometry) {
   }
 }
 
-// Module-level timer IDs for alarm mode
-let alarmIntervalId: ReturnType<typeof setInterval> | null = null;
-let alarmTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let alarmFirstId: ReturnType<typeof setTimeout> | null = null;
-
-function stopAlarmTimer() {
-  if (alarmIntervalId !== null) {
-    clearInterval(alarmIntervalId);
-    alarmIntervalId = null;
-  }
-  if (alarmTimeoutId !== null) {
-    clearTimeout(alarmTimeoutId);
-    alarmTimeoutId = null;
-  }
-  if (alarmFirstId !== null) {
-    clearTimeout(alarmFirstId);
-    alarmFirstId = null;
-  }
-}
-
-function startAlarmTimer(intervalMs: number, durationMs: number) {
-  stopAlarmTimer();
-  const runCycle = async () => {
-    // 宠物态下的「置顶提醒」= 把便签弹出来给用户看，而不是把小窗反复置顶
-    if (useNoteStore.getState().form === "pet") {
-      await useNoteStore.getState().setForm("note");
-    }
-    // Clear any pending hide timer from a previous cycle
-    if (alarmTimeoutId !== null) {
-      clearTimeout(alarmTimeoutId);
-      alarmTimeoutId = null;
-    }
-    try {
-      const win = getCurrentWindow();
-      // 用户可能先把窗最小化了：show() 解不开最小化，闹钟会「响了但什么都没出现」
-      await win.unminimize();
-      await win.show();
-      await win.setAlwaysOnTop(true);
-      // 从这一行起画面重新可见，桌宠若在隐藏中攒下的暂停要放开
-      useNoteStore.getState().setMediaPaused(false);
-    } catch {
-      return; // 窗口操作失败，本轮放弃
-    }
-    // 聚焦尽力而为，失败不影响后续隐藏流程
-    getCurrentWindow()
-      .setFocus()
-      .catch(() => {});
-    alarmTimeoutId = setTimeout(async () => {
-      alarmTimeoutId = null;
-      try {
-        const win = getCurrentWindow();
-        await win.setAlwaysOnTop(false);
-        // 结束行为跟随“关闭行为”设置：托盘→隐藏，直接退出→最小化到任务栏
-        const toTray = useNoteStore.getState().closeToTray ?? true;
-        if (toTray) {
-          await win.hide();
-          useNoteStore.getState().setMediaPaused(true);
-        } else {
-          await win.minimize();
-        }
-      } catch {
-        // window may already be closed
-      }
-    }, durationMs);
-  };
-  // 首轮 1 分钟后触发，之后按设置间隔循环（间隔最小 1 分钟）
-  alarmFirstId = setTimeout(() => {
-    runCycle();
-    alarmIntervalId = setInterval(runCycle, Math.max(60_000, intervalMs));
-  }, 60_000);
-}
-
 interface NoteState {
   notes: NoteMeta[];
   activeId: string | null;
-  pinMode: PinMode;
   opacity: number;
-  closeToTray: boolean | null;
   yuanShi: number;
   mora: number;
   streak: number;
-  alarmInterval: number;
-  alarmDuration: number;
 
   fetchNotes: () => Promise<void>;
   initDaily: () => Promise<InitDailyResult | null>;
   deleteNote: (id: string) => Promise<void>;
   renameNote: (id: string, title: string) => Promise<void>;
   setActive: (id: string) => void;
-  cyclePinMode: () => Promise<void>;
-  setPinMode: (mode: PinMode) => Promise<void>;
   setOpacity: (value: number) => void;
   fetchOpacity: () => Promise<void>;
-  fetchCloseBehavior: () => Promise<void>;
-  setCloseBehavior: (closeToTray: boolean) => Promise<void>;
   checkWeekly: () => Promise<WeeklyResult>;
   getBalance: () => Promise<void>;
-  fetchAlarmConfig: () => Promise<void>;
-  setAlarmInterval: (minutes: number) => Promise<void>;
-  setAlarmDuration: (seconds: number) => Promise<void>;
   skinImage: string;
   skinActive: boolean;
   fetchSkin: () => Promise<void>;
@@ -403,10 +432,14 @@ interface NoteState {
   formBusy: boolean;
   /** 当天委托的完成情况（Rust 权威，桌宠的动作与气泡据此挑选） */
   progress: TodayProgress | null;
-  /** 最近一次结算发生的时刻（毫秒）；只在几分钟内让宠物有「刚拿到钱」的动作 */
-  settledAt: number | null;
   /**
-   * 画面不可见 → 暂停解码。窗口隐藏的路径有好几条（托盘、闹钟收尾、避让），
+   * 欠桌宠一次金袋。Rust 在 save_note 里比较出「刚勾掉了几条」就广播 task-completed，
+   * 这里只记布尔值：勾复选框发生在便签态，而便签态不渲染 PetStage，所以这笔账必须由
+   * store 记着，等宠物下次出现在屏幕上时兑现。
+   */
+  coinsPending: boolean;
+  /**
+   * 画面不可见 → 暂停解码。窗口隐藏的路径有好几条（托盘、全屏避让），
    * 由这些路径各自置位；桌宠在隐藏时继续解码就是白烧 CPU。
    */
   mediaPaused: boolean;
@@ -432,14 +465,10 @@ interface NoteState {
 export const useNoteStore = create<NoteState>((set, get) => ({
   notes: [],
   activeId: null,
-  pinMode: "normal",
   opacity: 0.92,
-  closeToTray: null,
   yuanShi: 0,
   mora: 0,
   streak: 0,
-  alarmInterval: 10, // 分钟
-  alarmDuration: 15,
   skinImage: "",
   skinActive: false,
   theme: "light",
@@ -456,7 +485,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   hasPendingEdit: false,
   formBusy: false,
   progress: null,
-  settledAt: null,
+  coinsPending: false,
   mediaPaused: false,
   petAvoided: false,
 
@@ -480,8 +509,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     try {
       const result: InitDailyResult = await invoke("init_daily");
       set({ yuanShi: result.yuan_shi, mora: result.mora });
-      // 记下「刚结算过」，桌宠三分钟内会播金袋/庆祝动作（settled 门控）
-      if (result.settle_reward > 0 || result.settle_mora > 0) set({ settledAt: Date.now() });
       return result;
     } catch (e) {
       console.error("Failed to init daily:", e);
@@ -516,38 +543,17 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     set({ activeId: id });
   },
 
-  cyclePinMode: async () => {
-    const { pinMode } = get();
-    // pin → alarm → normal → pin
-    const next: PinMode = pinMode === "pin" ? "alarm" : pinMode === "alarm" ? "normal" : "pin";
-    await get().setPinMode(next);
-  },
-
-  setPinMode: async (mode: PinMode) => {
-    const { alarmInterval, alarmDuration } = get();
-    const win = getCurrentWindow();
-
-    stopAlarmTimer();
-
-    if (mode === "pin") {
-      await win.setAlwaysOnTop(true);
-    } else if (mode === "alarm") {
-      // 宠物态恒置顶：桌宠被别的窗口埋掉就不是桌宠了
-      if (get().form !== "pet") await win.setAlwaysOnTop(false);
-      startAlarmTimer(alarmInterval * 60 * 1000, alarmDuration * 1000);
-    } else {
-      // normal
-      if (get().form !== "pet") await win.setAlwaysOnTop(false);
-    }
-
-    set({ pinMode: mode });
-  },
-
   setOpacity: (value: number) => {
     set({ opacity: value });
-    invoke("set_opacity", { opacity: value }).catch((e) =>
-      console.error("Failed to persist opacity:", e)
-    );
+    // 透明度滑块每帧都 onChange；每次原子写配置 + fsync 会拖慢拖动。
+    // UI 立即生效，落盘攒 300ms 一次。
+    if (opacityTimer) clearTimeout(opacityTimer);
+    opacityTimer = setTimeout(() => {
+      opacityTimer = null;
+      invoke("set_opacity", { opacity: useNoteStore.getState().opacity }).catch((e) =>
+        console.error("Failed to persist opacity:", e)
+      );
+    }, 300);
   },
 
   fetchOpacity: async () => {
@@ -556,24 +562,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       set({ opacity });
     } catch {
       // keep default 0.92
-    }
-  },
-
-  fetchCloseBehavior: async () => {
-    try {
-      const tray: boolean = await invoke("get_close_behavior");
-      set({ closeToTray: tray });
-    } catch {
-      set({ closeToTray: true });
-    }
-  },
-
-  setCloseBehavior: async (closeToTray: boolean) => {
-    try {
-      await invoke("set_close_behavior", { closeToTray });
-      set({ closeToTray });
-    } catch (e) {
-      console.error("Failed to set close behavior:", e);
     }
   },
 
@@ -592,48 +580,6 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       set({ yuanShi, mora, streak });
     } catch (e) {
       console.error("Failed to get balance:", e);
-    }
-  },
-
-  fetchAlarmConfig: async () => {
-    try {
-      // 后端以秒存储，前端以分钟展示；至少 1 分钟（旧配置可能读到 0）
-      const alarmIntervalSec: number = await invoke("get_alarm_interval");
-      const alarmDuration: number = await invoke("get_alarm_duration");
-      set({
-        alarmInterval: Math.max(1, Math.round(alarmIntervalSec / 60)),
-        alarmDuration: Math.max(1, alarmDuration),
-      });
-    } catch {
-      // keep defaults
-    }
-  },
-
-  setAlarmInterval: async (minutes: number) => {
-    const clamped = Math.max(1, Math.round(minutes));
-    try {
-      await invoke("set_alarm_interval", { seconds: clamped * 60 });
-      set({ alarmInterval: clamped });
-      // Restart alarm timer if currently in alarm mode
-      if (get().pinMode === "alarm") {
-        startAlarmTimer(clamped * 60 * 1000, get().alarmDuration * 1000);
-      }
-    } catch (e) {
-      console.error("Failed to set alarm interval:", e);
-    }
-  },
-
-  setAlarmDuration: async (seconds: number) => {
-    const clamped = Math.max(1, Math.min(60, seconds));
-    try {
-      await invoke("set_alarm_duration", { seconds: clamped });
-      set({ alarmDuration: clamped });
-      // Restart alarm timer if currently in alarm mode
-      if (get().pinMode === "alarm") {
-        startAlarmTimer(get().alarmInterval * 60 * 1000, clamped * 1000);
-      }
-    } catch (e) {
-      console.error("Failed to set alarm duration:", e);
     }
   },
 
@@ -715,14 +661,27 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     });
     // 开关关着 / 存档不明 → 一律便签态；从宠物态被关掉时必须把窗恢复成便签大小
     const prev = get().form;
+    const prevScale = get().petScale;
     const target: Form = s.pet_enabled && s.form === "pet" ? "pet" : "note";
+    const firstLoad = !uiStateLoaded;
+    uiStateLoaded = true;
     set({ form: target });
     applyFormMarker(target);
+    const formChanged = prev !== target;
+    const scaleChanged = prevScale !== s.pet_scale;
     if (target === "pet") {
-      if (prev !== "pet") await sleep(PET_SWAP_MS); // 内容刚换成宠物，隔一帧再缩窗
-      await collapseToPetForm(petPos, s.pet_scale);
-    } else if (prev !== "note" || noteGeom) {
-      await expandToNoteForm(noteGeom, get().pinMode);
+      if (formChanged) await sleep(PET_SWAP_MS); // 内容刚换成宠物，隔一帧再缩窗
+      if (firstLoad || formChanged || scaleChanged) {
+        await collapseToPetForm(petPos, s.pet_scale);
+      }
+    } else if (formChanged || (firstLoad && noteGeom)) {
+      if (formChanged) {
+        // 托盘把桌宠关掉时也要收起可能还挂着的气泡/待说话
+        cancelSay();
+        await emit("pet-bubble-hide").catch(() => {});
+      }
+      // 启动/开关切换：窗里没有宠物，按存档位置落位
+      await expandToNoteForm(noteGeom, null);
     }
   },
 
@@ -738,6 +697,9 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     let pos = { x: g.x, y: g.y };
     if (st.form === "pet") {
       const wa = await workAreaPhysical();
+      // 别把按宠物几何算出的吸附位置应用到已经变成便签的窗口上
+      const afterRead = get();
+      if (afterRead.formBusy || afterRead.form !== st.form) return;
       pos = snapToWorkArea(wa, g.x, g.y, g.w, g.h);
       if (pos.x !== g.x || pos.y !== g.y) {
         await getCurrentWindow()
@@ -745,6 +707,9 @@ export const useNoteStore = create<NoteState>((set, get) => ({
           .catch(() => {});
       }
     }
+    // 读几何/工作区期间可能已经开始了形态切换，别把旧形态的几何写回配置
+    const now = get();
+    if (now.formBusy || now.form !== st.form) return;
     const saved = { x: pos.x, y: pos.y, w: g.w, h: g.h };
     set(st.form === "note" ? { noteGeom: saved } : { petPos: { x: pos.x, y: pos.y } });
     await persistFormGeometry(st.form, saved);
@@ -774,9 +739,12 @@ export const useNoteStore = create<NoteState>((set, get) => ({
 
     const send = async () => {
       if (gen !== sayGen) return;
+      if (get().form !== "pet") return; // 已经展开便签：宠物气泡没有主人
       // 锚点要等到真正开口这一刻才读：等空闲的这几秒里用户可能把宠物拖走了
       const g = await readVisibleWindowGeometry();
       if (!g) return; // 窗口最小化 / 非 Tauri 环境没有气泡窗
+      // 读几何也是异步的：这期间可能已经展开便签或被全屏避让藏起来
+      if (gen !== sayGen || get().form !== "pet" || get().mediaPaused) return;
       const payload: BubblePayload = { text, ttlMs, anchor: { x: g.x, y: g.y, w: g.w, h: g.h } };
       try {
         await emit("pet-bubble", payload);
@@ -788,7 +756,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     const deadline = Date.now() + IDLE_WAIT_MAX_MS;
     const attempt = async () => {
       if (gen !== sayGen) return;
-      if (get().mediaPaused) return; // 宠物藏起来了，说了没人听
+      if (get().mediaPaused || get().form !== "pet") return; // 宠物藏起来了/已展开便签，说了没人听
       const idle = await idleSeconds();
       if (idle === null) return void (await send()); // 读不到就不门控，别把话憋死
       if (idle >= IDLE_MIN_SEC && idle <= IDLE_MAX_SEC) return void (await send());
@@ -861,16 +829,41 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     set({ formBusy: true });
     try {
       if (target === "note") {
-        await expandToNoteForm(st.noteGeom, st.pinMode);
+        // 便签态不需要宠物气泡：作废还在等待的 say，并收起已经显示的气泡窗
+        cancelSay();
+        await emit("pet-bubble-hide").catch(() => {});
+        // 宠物就是这扇窗本身。她**被拖走过**才以她为锚点展开（用户要的就是「拖到哪儿
+        // 便签就在哪儿弹」）；没挪过就按存档原样复原。
+        // 不能用 st.petPos 判断：它靠 onMoved 的 400 ms 去抖落盘，拖完等一会儿再单击时
+        // 两者已经相等，会被误判成“没拖过”。改为和“上次便签边缘算出的锚点”比较：
+        // 这个锚点由 noteGeom 独立推导，且经过同样的吸附/夹取，跨重启也成立。
+        // 8 物理像素容差覆盖取整/吸附误差；真正的拖拽远大于它。
+        const pet = await readVisibleWindowGeometry();
+        let dragged = !!pet;
+        if (pet && st.noteGeom) {
+          const wa = await workAreaPhysical();
+          const expected = petBoxOnNoteEdge(sharedEdge(wa, st.noteGeom), st.noteGeom, pet.w, pet.h);
+          const snapped = snapToWorkArea(wa, expected.x, expected.y, pet.w, pet.h);
+          dragged = Math.abs(pet.x - snapped.x) > 8 || Math.abs(pet.y - snapped.y) > 8;
+        }
+        await expandToNoteForm(st.noteGeom, dragged ? pet : null);
         // 展开是用户主动要看的画面：避让与暂停标记到此为止，不能带着「躲起来了」进便签态
         set({ form: "note", petAvoided: false, mediaPaused: false });
         applyFormMarker("note");
       } else {
+        // 缩窗前把便签的最新几何落盘：用户可能刚拉过大小/位置，400ms 自动保存
+        // 还没触发时按 Ctrl+Shift+P，旧 noteGeom 会在下次展开时把尺寸改回去。
+        const noteGeomNow = await readVisibleWindowGeometry();
+        if (noteGeomNow) {
+          set({ noteGeom: noteGeomNow });
+          await persistFormGeometry("note", noteGeomNow);
+        }
         // 先换成宠物内容，隔一帧再缩窗；顺序反了会带着便签布局去 resize
         set({ form: "pet" });
         applyFormMarker("pet");
         await sleep(PET_SWAP_MS);
-        await collapseToPetForm(st.petPos, st.petScale);
+        // 传 null：便签刚刚还在眼前，宠物就该挂在它边上，而不是跳回上次存档的角落
+        await collapseToPetForm(null, st.petScale);
       }
       // 落位后以窗口真实几何为准回写，而不是记「打算设成多少」；
       // 最小化时读到的是 (-32000,-32000)+占位尺寸，宁可不存也不能存它

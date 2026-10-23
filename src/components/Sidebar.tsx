@@ -45,8 +45,11 @@ export default function Sidebar() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    await deleteNote(id);
+    const title = notes.find((n) => n.id === id)?.title || "这份委托";
     setContextMenu(null);
+    // 删除会直接移除 .md，无法恢复：一次误点不该毁掉一整天的记录
+    if (!window.confirm(`确定删除「${title}」？删除后无法恢复。`)) return;
+    await deleteNote(id);
   };
 
   const startRename = (id: string, title: string) => {

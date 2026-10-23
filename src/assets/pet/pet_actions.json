@@ -35,6 +35,8 @@
     "Pool": "Idle",
     "Weight": 120,
     "Loop": false,
+    "HourFrom": 21,
+    "HourTo": 22,
     "Gate": "incomplete"
   },
   {
@@ -73,14 +75,12 @@
     "Id": "余额-金袋叮当",
     "File": "mood-coins",
     "Pool": "Notify",
-    "Weight": 100,
-    "Gate": "settled"
+    "Weight": 0
   },
   {
     "Id": "偷吃零食被抓住",
     "File": "mood-snack",
     "Pool": "Notify",
-    "Weight": 50,
-    "Gate": "empty_note"
+    "Weight": 50
   }
 ]

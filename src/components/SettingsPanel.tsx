@@ -25,9 +25,6 @@ interface Props {
 
 export default function SettingsPanel({ open, onClose }: Props) {
   const {
-    closeToTray,
-    alarmInterval,
-    alarmDuration,
     opacity,
     skinImage,
     skinActive,
@@ -35,9 +32,11 @@ export default function SettingsPanel({ open, onClose }: Props) {
     // 动作间隔的实际秒数只用于展示：区间表只在 Rust 有一份，本地不复制
     petActionMinSec,
     petActionMaxSec,
-    setCloseBehavior,
-    setAlarmInterval,
-    setAlarmDuration,
+    petEnabled,
+    petScale,
+    petActionIndex,
+    petAutoCollapseMs,
+    petHideOnFullscreen,
     setOpacity,
     importSkin,
     removeSkin,
@@ -64,6 +63,19 @@ export default function SettingsPanel({ open, onClose }: Props) {
       hideOnFullscreen: s.petHideOnFullscreen,
     });
   }, [open]);
+
+  // 托盘切换桌宠/其他 ui-state-changed 会改 store；面板没在编辑草稿时同步过来，
+  // 否则下一次动滑块会用旧草稿把托盘的开关覆盖回去。
+  useEffect(() => {
+    if (!open || petDirty.current) return;
+    setPetDraft({
+      petEnabled,
+      scale: petScale,
+      actionIndex: petActionIndex,
+      autoCollapseMs: petAutoCollapseMs,
+      hideOnFullscreen: petHideOnFullscreen,
+    });
+  }, [open, petEnabled, petScale, petActionIndex, petAutoCollapseMs, petHideOnFullscreen]);
 
   useEffect(() => {
     if (!petDraft || !petDirty.current) return;
@@ -151,7 +163,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
           >
             <div className="settings-label">
               <div className="settings-label-title">开机自启动</div>
-              <div className="settings-label-desc">登录 Windows 时自动启动应用（最小化到托盘）</div>
+              <div className="settings-label-desc">登录 Windows 时自动启动应用并直接显示窗口</div>
             </div>
             <div className={`settings-toggle ${autoStart ? "on" : "off"}`}>
               <div className="settings-toggle-knob" />
@@ -204,7 +216,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className="settings-label">
               <div className="settings-label-title">导入皮肤</div>
               <div className="settings-label-desc">
-                整窗背景图（仅浅色模式生效，支持 PNG / JPG / WebP，≤8MB）
+                整窗背景图（各颜色主题下均可用，支持 PNG / JPG / WebP，≤8MB）
               </div>
             </div>
             {skinImage && (
@@ -232,54 +244,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
             onChange={handleSkinFile}
           />
 
-          <button
-            type="button"
-            role="switch"
-            aria-checked={!!closeToTray}
-            className="settings-row"
-            onClick={() => setCloseBehavior(!closeToTray)}
-          >
-            <div className="settings-label">
-              <div className="settings-label-title">关闭行为</div>
-              <div className="settings-label-desc">
-                {closeToTray ? "点击关闭时最小化到托盘" : "点击关闭时直接退出程序"}
-              </div>
-            </div>
-            <div className={`settings-toggle ${closeToTray ? "on" : "off"}`}>
-              <div className="settings-toggle-knob" />
-            </div>
-          </button>
-
-          {/* Alarm mode params */}
-          <div className="settings-section-title">闹钟提醒</div>
-          <div className="settings-row">
-            <div className="settings-label">
-              <div className="settings-label-title">提醒间隔（分钟）</div>
-              <div className="settings-label-desc">闹钟模式下每隔该时长（分钟）弹出置顶提醒</div>
-            </div>
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={alarmInterval}
-              className="settings-number-input"
-              onChange={(e) => setAlarmInterval(Number(e.target.value))}
-            />
-          </div>
-          <div className="settings-row">
-            <div className="settings-label">
-              <div className="settings-label-title">置顶时长（秒，最长 60）</div>
-              <div className="settings-label-desc">置顶显示该时长后隐藏到任务栏</div>
-            </div>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={alarmDuration}
-              className="settings-number-input"
-              onChange={(e) => setAlarmDuration(Number(e.target.value))}
-            />
-          </div>
+          {/* 关闭行为不再做成设置项：一律「关闭即退出」，托盘只用于显示窗口与切桌宠/自启 */}
 
           {/* 桌宠分区 */}
           <div className="settings-section-title">桌宠</div>

@@ -27,32 +27,6 @@ function Svg({
   );
 }
 
-export function IconPin(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-      <circle cx="12" cy="10" r="3" />
-    </Svg>
-  );
-}
-
-export function IconAlarm(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </Svg>
-  );
-}
-
-export function IconNormal(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <circle cx="12" cy="12" r="9" />
-    </Svg>
-  );
-}
-
 export function IconRefresh(props: IconProps) {
   return (
     <Svg {...props}>

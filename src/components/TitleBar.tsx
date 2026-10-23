@@ -1,24 +1,14 @@
-import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNoteStore } from "../stores/noteStore";
-import FirstCloseDialog from "./FirstCloseDialog";
-import {
-  IconPin,
-  IconAlarm,
-  IconNormal,
-  IconRefresh,
-  IconSettings,
-  IconMinimize,
-  IconClose,
-} from "./titleIcons";
+import { IconRefresh, IconSettings, IconMinimize, IconClose } from "./titleIcons";
 import yuanShiIcon from "../assets/yuan-shi.png";
 import moraIcon from "../assets/mora.png";
 import qiyuanIcon from "../assets/qiyuan.png";
 import appIcon from "../assets/app-icon.png";
 import lixingIcon from "../assets/lixing.png";
 
-const GITEE_REPO_URL = "https://gitee.com/Honest_Leon/lightweight-sticky-notes";
+const REPO_URL = "https://github.com/HonestLeon/Daily-Commissions-Simulator";
 
 interface Props {
   onSettings: () => void;
@@ -27,48 +17,15 @@ interface Props {
 }
 
 export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: Props) {
-  const {
-    pinMode,
-    alarmInterval,
-    alarmDuration,
-    closeToTray,
-    setCloseBehavior,
-    cyclePinMode,
-    yuanShi,
-    mora,
-  } = useNoteStore();
-  const [showCloseDialog, setShowCloseDialog] = useState(false);
-
-  const ModeIcon = pinMode === "pin" ? IconPin : pinMode === "alarm" ? IconAlarm : IconNormal;
-  const modeTitle =
-    pinMode === "pin"
-      ? "始终置顶（点击切换模式）"
-      : pinMode === "alarm"
-        ? `定时置顶：每 ${alarmInterval} 分钟弹出 ${alarmDuration}s 后隐藏到任务栏（点击切换模式）`
-        : "正常状态（点击切换为始终置顶）";
+  const { yuanShi, mora } = useNoteStore();
 
   const handleMinimize = async () => {
     await getCurrentWindow().minimize();
   };
 
+  // 关闭就是退出：Rust 在 CloseRequested 里直接 exit(0)，不再有「最小化到托盘」这一档
   const handleClose = async () => {
-    if (closeToTray === null) {
-      setShowCloseDialog(true);
-    } else if (closeToTray) {
-      await getCurrentWindow().hide();
-    } else {
-      await getCurrentWindow().close();
-    }
-  };
-
-  const handleCloseChoice = async (tray: boolean) => {
-    setShowCloseDialog(false);
-    await setCloseBehavior(tray);
-    if (tray) {
-      await getCurrentWindow().hide();
-    } else {
-      await getCurrentWindow().close();
-    }
+    await getCurrentWindow().close();
   };
 
   return (
@@ -90,8 +47,8 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           className="titlebar-logo"
           src={appIcon}
           alt="每日委托模拟器"
-          title="打开 Gitee 仓库"
-          onClick={() => openUrl(GITEE_REPO_URL)}
+          title="打开 GitHub 仓库"
+          onClick={() => openUrl(REPO_URL)}
         />
         <div className="titlebar-yuanshi" title="原石余额">
           <img src={yuanShiIcon} alt="" width={18} height={18} aria-hidden="true" />
@@ -124,15 +81,6 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           </button>
 
           <button
-            className={`titlebar-btn ${pinMode === "pin" ? "active" : pinMode === "alarm" ? "alarm" : ""}`}
-            onClick={() => cyclePinMode()}
-            title={modeTitle}
-            aria-label={modeTitle}
-          >
-            <ModeIcon />
-          </button>
-
-          <button
             className="titlebar-btn"
             onClick={onCheckUpdate}
             title="检查更新"
@@ -157,15 +105,13 @@ export default function TitleBar({ onSettings, onCheckUpdate, onCheckWeekly }: P
           <button
             className="titlebar-btn titlebar-btn-close"
             onClick={handleClose}
-            title="关闭"
+            title="关闭（退出程序）"
             aria-label="关闭"
           >
             <IconClose />
           </button>
         </div>
       </div>
-
-      <FirstCloseDialog open={showCloseDialog} onSelect={handleCloseChoice} />
     </>
   );
 }

@@ -10,9 +10,6 @@ export interface NoteMeta {
 
 export type ViewMode = "edit" | "preview" | "split";
 
-/** 标题栏置顶模式：pin=始终置顶；alarm=定时置顶提醒；normal=正常 */
-export type PinMode = "pin" | "alarm" | "normal";
-
 /** 颜色主题：light=默认浅色；sky/sakura/green=彩色主题 */
 export type AppTheme = "light" | "sky" | "sakura" | "green";
 
@@ -53,7 +50,9 @@ export interface TodayProgress {
   triple: boolean;
   /** 三个结算模块里是否至少有一条非空委托（全空的委托不该被夸） */
   has_tasks: boolean;
-  /** 明日委托（引用块 >）是否已填 */
+  /** 三个结算模块里已勾选的非空条数；Rust 用它算出增量并广播 task-completed */
+  checked_count: number;
+  /** 学习/工作、生活/其他 两个模块里是否填了内容 */
   tomorrow_filled: boolean;
   note_found: boolean;
 }
